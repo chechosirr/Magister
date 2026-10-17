@@ -42,7 +42,7 @@ h1{font-size:26px}
   </div>
 </main>
 <script>
-var SUPABASE_URL = 'https://tyqogeeiflolwpqneroqm.supabase.co';
+var SUPABASE_URL = 'https://tyqogeiflolwpqneroqm.supabase.co';
 var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR5cW9nZWlmbG9sd3BxbmVyb3FtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxOTQ4MzQsImV4cCI6MjEwNzc3MDgzNH0.6XSOhs5B_fQkiunJ7tc3ZwhvAZh2-i-nqd5fXY_CyCs';
 function api(p){ return fetch(SUPABASE_URL + '/rest/v1/' + p, { headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON } }).then(function(r){ return r.json(); }); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
