@@ -45,11 +45,41 @@ button.save{width:100%;margin-top:22px;background:linear-gradient(135deg,#ffffff
   </form>
 </div>
 <script>
+var SUPABASE_URL = 'https://tyqogeeiflolwpqneroqm.supabase.co';
+var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR5cW9nZWlmbG9sd3BxbmVyb3FtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxOTQ4MzQsImV4cCI6MjEwNzc3MDgzNH0.6XSOhs5B_fQkiunJ7tc3ZwhvAZh2-i-nqd5fXY_CyCs';
 var OFICIOS = ['Plomería','Electricidad','Carpintería','Pintura','Albañilería','Jardinería','Limpieza','Diseño gráfico','Desarrollo web','Contabilidad','Abogacía','Medicina','Belleza','Mecánica','Refrigeración','Seguridad','Otro'];
 document.getElementById('oficio').innerHTML = '<option value="">Seleccionar...</option>' + OFICIOS.map(function(o){return '<option>'+o+'</option>'}).join('');
+function slug(s){ return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') + '-' + Math.random().toString(36).slice(2,7); }
 document.getElementById('f').onsubmit = function(e){
   e.preventDefault();
-  alert('El registro completo con Supabase viene en la próxima actualización.');
+  var btn = document.querySelector('.save');
+  btn.disabled = true; btn.textContent = 'Guardando...';
+  // Por ahora guardamos sin autenticación (se agregará login después)
+  var data = {
+    slug: slug(document.getElementById('nombre').value),
+    nombre: document.getElementById('nombre').value.trim(),
+    oficio: document.getElementById('oficio').value,
+    descripcion: document.getElementById('descripcion').value.trim() || null,
+    whatsapp: document.getElementById('whatsapp').value.trim(),
+    ciudad: document.getElementById('ciudad').value.trim(),
+    departamento: document.getElementById('departamento').value.trim(),
+    precio_desde: parseFloat(document.getElementById('precio').value) || null
+  };
+  fetch(SUPABASE_URL + '/rest/v1/profesionales', {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+    body: JSON.stringify(data)
+  }).then(function(r){
+    if(!r.ok) throw new Error('Error ' + r.status);
+    return r.json();
+  }).then(function(rows){
+    var p = rows[0];
+    alert('¡Perfil creado!');
+    location.href = 'profesional.html?id=' + p.id;
+  }).catch(function(){
+    btn.disabled = false; btn.textContent = 'Crear mi perfil';
+    alert('No se pudo guardar. Intenta de nuevo.');
+  });
 };
 </script>
 </body>

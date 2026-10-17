@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Profesional — Magister</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Source Sans 3',system-ui,sans-serif;background:#fff;color:#111;min-height:100vh}
+.wrap{max-width:700px;margin:0 auto;padding:0 18px}
+header{background:#2a2a2e;padding:14px 0}
+.hd{max-width:700px;margin:0 auto;padding:0 18px}
+.logo{font-size:22px;font-weight:900;text-decoration:none;letter-spacing:1px;color:#fff}
+.logo .s{background:linear-gradient(135deg,#ffffff,#c9ced6 40%,#8a8f98 60%,#e8ebf0);-webkit-background-clip:text;background-clip:text;color:transparent}
+.cover{height:180px;background:linear-gradient(135deg,#2a2e35,#12161d);position:relative}
+.avatar{width:110px;height:110px;border-radius:50%;background:#0a0c10;border:4px solid #fff;position:absolute;bottom:-55px;left:18px;display:grid;place-content:center;font-size:44px;overflow:hidden}
+.avatar img{width:100%;height:100%;object-fit:cover}
+main{padding:70px 0 40px}
+h1{font-size:26px}
+.oficio{color:#4a4a52;font-size:15px;margin:4px 0 12px}
+.meta{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.pill{background:#0a0c10;color:#fff;font-size:13px;padding:8px 14px;border-radius:999px}
+.desc{background:#f4f5f7;border-radius:16px;padding:18px;margin-bottom:16px;font-size:15px;line-height:1.6}
+.wa{display:block;text-align:center;background:#25D366;color:#fff;text-decoration:none;font-weight:800;font-size:16px;padding:15px;border-radius:14px;margin-bottom:24px}
+.sec h2{font-size:20px;margin-bottom:12px}
+.res{border:1px solid #e5e7eb;border-radius:14px;padding:14px;margin-bottom:10px}
+.res b{font-size:14px}
+.stars{color:#f5a623;font-size:14px}
+.res p{font-size:14px;color:#4a4a52;margin-top:6px}
+.empty{color:#9aa0a8;text-align:center;padding:20px}
+</style>
+</head>
+<body>
+<header><div class="hd"><a class="logo" href="./">MAGI<span class="s">STER</span></a></div></header>
+<div class="cover"><div class="wrap" style="position:relative;height:100%"><div class="avatar" id="avatar">👤</div></div></div>
+<main class="wrap">
+  <div id="perfil"><p class="empty">Cargando...</p></div>
+  <div class="sec" id="resenas-sec" style="display:none">
+    <h2>Reseñas</h2>
+    <div id="resenas"></div>
+  </div>
+</main>
+<script>
+var SUPABASE_URL = 'https://tyqogeeiflolwpqneroqm.supabase.co';
+var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR5cW9nZWlmbG9sd3BxbmVyb3FtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxOTQ4MzQsImV4cCI6MjEwNzc3MDgzNH0.6XSOhs5B_fQkiunJ7tc3ZwhvAZh2-i-nqd5fXY_CyCs';
+function api(p){ return fetch(SUPABASE_URL + '/rest/v1/' + p, { headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON } }).then(function(r){ return r.json(); }); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+var id = new URLSearchParams(location.search).get('id');
+if(id){
+  api('profesionales?id=eq.' + id + '&select=*').then(function(rows){
+    var p = (rows || [])[0];
+    if(!p){ document.getElementById('perfil').innerHTML = '<p class="empty">Profesional no encontrado.</p>'; return; }
+    document.title = p.nombre + ' — Magister';
+    if(p.foto_url) document.getElementById('avatar').innerHTML = '<img src="' + esc(p.foto_url) + '">';
+    var html = '<h1>' + esc(p.nombre) + '</h1>'
+      + '<div class="oficio">' + esc(p.oficio) + (p.ciudad ? ' · ' + esc(p.ciudad) : '') + '</div>'
+      + '<div class="meta">'
+      + (p.precio_desde ? '<span class="pill">Desde $' + Number(p.precio_desde).toFixed(2) + '</span>' : '')
+      + (p.verificado ? '<span class="pill">✓ Verificado</span>' : '')
+      + '</div>'
+      + (p.descripcion ? '<div class="desc">' + esc(p.descripcion) + '</div>' : '')
+      + (p.whatsapp ? '<a class="wa" href="https://wa.me/' + esc(p.whatsapp.replace(/\D/g,'')) + '" target="_blank">Contactar por WhatsApp</a>' : '');
+    document.getElementById('perfil').innerHTML = html;
+    return api('resenas?profesional_id=eq.' + id + '&select=*&order=created_at.desc');
+  }).then(function(rows){
+    if(rows && rows.length){
+      document.getElementById('resenas-sec').style.display = '';
+      document.getElementById('resenas').innerHTML = rows.map(function(r){
+        var st = '★'.repeat(r.calificacion) + '☆'.repeat(5 - r.calificacion);
+        return '<div class="res"><b>' + esc(r.autor_nombre || 'Anónimo') + '</b> <span class="stars">' + st + '</span><p>' + esc(r.comentario || '') + '</p></div>';
+      }).join('');
+    }
+  });
+}
+</script>
+</body>
+</html>
