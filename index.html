@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Magister — Profesionales de confianza</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#ffffff;--txt:#111111;--mut:#4a4a52;--card:#0a0c10;--line:#1e242e;--acc:#4a4a52}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Source Sans 3',system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-direction:column}
+a{color:inherit}
+.wrap{max-width:1100px;margin:0 auto;padding:0 18px;width:100%}
+header{background:#2a2a2e;padding:14px 0;position:sticky;top:0;z-index:50}
+.hd{display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:24px;font-weight:900;text-decoration:none;letter-spacing:1px}
+.logo .w{color:#000}.logo .s{background:linear-gradient(135deg,#ffffff,#c9ced6 40%,#8a8f98 60%,#e8ebf0);-webkit-background-clip:text;background-clip:text;color:transparent}
+.nav{display:flex;gap:8px;align-items:center}
+.nav a{color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:8px 14px;border-radius:10px}
+.nav a.cta{background:linear-gradient(135deg,#ffffff,#d9dee6 30%,#a9b2c0 50%,#f2f4f8 70%,#c3cad4);color:#0a0c10;font-weight:800}
+.hero{background:#2a2a2e;color:#fff;text-align:center;padding:56px 18px 48px;position:relative;overflow:hidden}
+.hero h1{font-size:clamp(28px,6vw,46px);font-weight:900;margin-bottom:12px}
+.hero p{font-size:17px;color:#c9cdd4;max-width:560px;margin:0 auto 26px}
+.hero-search{display:flex;max-width:580px;margin:0 auto;background:rgba(16,19,24,.9);border:2px solid #2c3542;border-radius:18px;padding:6px;gap:6px}
+.hero-search input{flex:1;min-width:0;background:none;border:0;outline:0;color:#fff;font-size:17px;padding:14px 18px;font-family:inherit}
+.hero-search input::placeholder{color:#9aa0a8}
+.hero-search button{background:linear-gradient(135deg,#ffffff,#d9dee6 30%,#a9b2c0 50%,#f2f4f8 70%,#c3cad4);color:#0a0c10;border:0;border-radius:13px;font-weight:800;font-size:16px;padding:0 32px;cursor:pointer;font-family:inherit}
+.cats{padding:36px 0}
+.sec-head h2{font-size:22px;color:#111;margin-bottom:16px}
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.cat-card{background:#0a0c10;border:1px solid var(--line);border-radius:16px;padding:22px 16px;text-align:center;text-decoration:none;transition:transform .18s}
+.cat-card:hover{transform:translateY(-3px)}
+.cat-card .ic{font-size:32px;margin-bottom:8px}
+.cat-card b{color:#fff;font-size:14px;display:block}
+.cat-card small{color:#9aa0a8;font-size:12px}
+.how{background:#0a0c10;border:1px solid var(--line);border-radius:22px;padding:30px 26px;margin:36px 0;color:#fff}
+.how h2{font-size:22px;margin-bottom:18px;color:#fff}
+.steps{display:grid;gap:16px}
+.step{display:flex;gap:14px;align-items:flex-start}
+.n{flex:0 0 36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#ffffff,#d9dee6 30%,#a9b2c0 50%,#f2f4f8 70%,#c3cad4);color:#0a0c10;font-weight:900;display:grid;place-content:center}
+.step p{font-size:14px;color:#fff;line-height:1.6;margin:0}
+.step p b{color:#fff}
+footer{margin-top:auto;background:#2a2a2e;color:#9aa0a8;text-align:center;padding:26px 18px;font-size:13px}
+@media(max-width:640px){.cat-grid{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<header><div class="wrap hd">
+  <a class="logo" href="./"><span class="w">MAGI</span><span class="s">STER</span></a>
+  <nav class="nav">
+    <a href="buscar.html">Buscar</a>
+    <a href="registro.html" class="cta">Soy profesional</a>
+  </nav>
+</div></header>
+
+<section class="hero">
+  <h1>Encuentra al profesional que necesitas</h1>
+  <p>Plomeros, electricistas, diseñadores, abogados y más. Verificados y con reseñas reales.</p>
+  <form class="hero-search" action="buscar.html" method="get">
+    <input name="q" type="search" placeholder="¿Qué profesional buscas?">
+    <button type="submit">Buscar</button>
+  </form>
+</section>
+
+<main class="wrap">
+  <section class="cats">
+    <div class="sec-head"><h2>Categorías</h2></div>
+    <div class="cat-grid" id="cat-grid"></div>
+  </section>
+
+  <section class="how">
+    <h2>¿Cómo funciona Magister?</h2>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><p><b>Busca</b> el profesional que necesitas por oficio o nombre.</p></div>
+      <div class="step"><div class="n">2</div><p><b>Revisa</b> su perfil, fotos de trabajos y reseñas de clientes.</p></div>
+      <div class="step"><div class="n">3</div><p><b>Contacta</b> directo por WhatsApp y coordina el servicio.</p></div>
+    </div>
+  </section>
+</main>
+
+<footer>Magister — Conectando profesionales con clientes en Nicaragua</footer>
+
+<script>
+var CATS = [
+  {n:'Plomería', ic:'🔧'}, {n:'Electricidad', ic:'⚡'}, {n:'Carpintería', ic:'🪚'},
+  {n:'Pintura', ic:'🎨'}, {n:'Albañilería', ic:'🧱'}, {n:'Jardinería', ic:'🌱'},
+  {n:'Limpieza', ic:'🧹'}, {n:'Diseño gráfico', ic:'✏️'}, {n:'Desarrollo web', ic:'💻'},
+  {n:'Contabilidad', ic:'📊'}, {n:'Abogacía', ic:'⚖️'}, {n:'Medicina', ic:'🩺'},
+  {n:'Belleza', ic:'💇'}, {n:'Mecánica', ic:'🔩'}, {n:'Refrigeración', ic:'❄️'},
+  {n:'Seguridad', ic:'🛡️'}
+];
+document.getElementById('cat-grid').innerHTML = CATS.map(function(c){
+  return '<a class="cat-card" href="buscar.html?cat=' + encodeURIComponent(c.n) + '">'
+    + '<div class="ic">' + c.ic + '</div><b>' + c.n + '</b></a>';
+}).join('');
+</script>
+</body>
+</html>
