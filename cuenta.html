@@ -19,7 +19,7 @@ h1{font-size:24px;margin-bottom:6px}
 .tabs button{flex:1;padding:12px;border:1px solid #2b3049;background:#12161d;color:#fff;border-radius:12px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer}
 .tabs button.on{background:#fff;color:#0a0c10;border-color:#fff}
 label{font-size:13px;display:block;margin:14px 0 6px;font-weight:600}
-input{width:100%;background:#0a0c13;border:1px solid #2b3049;border-radius:12px;padding:13px 15px;color:#fff;font-family:inherit;font-size:15px}
+input,select{width:100%;background:#0a0c13;border:1px solid #2b3049;border-radius:12px;padding:13px 15px;color:#fff;font-family:inherit;font-size:15px}
 button.go{width:100%;margin-top:22px;background:linear-gradient(135deg,#ffffff,#d9dee6 30%,#a9b2c0 50%,#f2f4f8 70%,#c3cad4);color:#0a0c10;border:0;border-radius:14px;padding:15px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit}
 .msg{margin-top:14px;font-size:14px;text-align:center;min-height:20px}
 .msg.err{color:#ff8a8a}.msg.ok{color:#7CFC98}
@@ -35,7 +35,13 @@ button.go{width:100%;margin-top:22px;background:linear-gradient(135deg,#ffffff,#
     <button id="t-up">Crear cuenta</button>
   </div>
   <form id="f">
-    <div id="f-nombre" style="display:none"><label>Nombre completo</label><input id="nombre"></div>
+    <div id="f-tipo" style="display:none">
+      <label>Quiero</label>
+      <select id="tipo">
+        <option value="cliente">Buscar profesionales</option>
+        <option value="profesional">Ofrecer mis servicios</option>
+      </select>
+    </div>
     <label>Correo electrónico</label><input id="email" type="email" required>
     <label>Contraseña</label><input id="pass" type="password" required minlength="6">
     <button class="go" type="submit" id="btn">Entrar</button>
@@ -50,7 +56,7 @@ function setMode(m){
   mode = m;
   document.getElementById('t-in').className = m === 'in' ? 'on' : '';
   document.getElementById('t-up').className = m === 'up' ? 'on' : '';
-  document.getElementById('f-nombre').style.display = m === 'up' ? '' : 'none';
+  document.getElementById('f-tipo').style.display = m === 'up' ? '' : 'none';
   document.getElementById('btn').textContent = m === 'in' ? 'Entrar' : 'Crear cuenta';
 }
 document.getElementById('t-in').onclick = function(){ setMode('in'); };
@@ -74,8 +80,10 @@ document.getElementById('f').onsubmit = function(e){
     btn.disabled = false;
     if(!res.ok){ msg.className = 'msg err'; msg.textContent = res.j.msg || res.j.error_description || 'Error. Intenta de nuevo.'; return; }
     localStorage.setItem('magister_session', JSON.stringify(res.j));
+    var tipo = mode === 'up' ? document.getElementById('tipo').value : (localStorage.getItem('magister_tipo') || 'cliente');
+    localStorage.setItem('magister_tipo', tipo);
     msg.className = 'msg ok'; msg.textContent = '¡Listo! Redirigiendo...';
-    setTimeout(function(){ location.href = 'mi-perfil.html'; }, 800);
+    setTimeout(function(){ location.href = tipo === 'profesional' ? 'mi-perfil.html' : 'perfil-cliente.html'; }, 800);
   };
   if(mode === 'in'){
     btn.textContent = 'Entrando...';

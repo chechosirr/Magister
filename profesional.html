@@ -60,8 +60,32 @@ if(id){
       + (p.verificado ? '<span class="pill">✓ Verificado</span>' : '')
       + '</div>'
       + (p.descripcion ? '<div class="desc">' + esc(p.descripcion) + '</div>' : '')
-      + (p.whatsapp ? '<a class="wa" href="https://wa.me/' + esc(p.whatsapp.replace(/\D/g,'')) + '" target="_blank">Contactar por WhatsApp</a>' : '');
+      + (p.whatsapp ? '<a class="wa" href="https://wa.me/' + esc(p.whatsapp.replace(/\D/g,'')) + '" target="_blank">Contactar por WhatsApp</a>' : '')
+      + '<button id="fav-btn" style="width:100%;background:none;border:1px solid #e5e7eb;border-radius:14px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;color:#111;margin-bottom:24px">♡ Guardar en favoritos</button>';
     document.getElementById('perfil').innerHTML = html;
+    // Favorito
+    var favBtn = document.getElementById('fav-btn');
+    if(favBtn){
+      var sess2 = null;
+      try { sess2 = JSON.parse(localStorage.getItem('magister_session') || 'null'); } catch(e){}
+      var updateFav = function(){
+        var favs = [];
+        var fkey = sess2 ? 'magister_favs_' + sess2.user.id : 'magister_favs_anon';
+        try { favs = JSON.parse(localStorage.getItem(fkey) || '[]'); } catch(e){}
+        var isFav = favs.some(function(f){ return f.id === p.id; });
+        favBtn.textContent = isFav ? '♥ En favoritos' : '♡ Guardar en favoritos';
+      };
+      updateFav();
+      favBtn.onclick = function(){
+        var key = sess2 ? 'magister_favs_' + sess2.user.id : 'magister_favs_anon';
+        var favs = [];
+        try { favs = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e){}
+        var idx = favs.findIndex(function(f){ return f.id === p.id; });
+        if(idx >= 0){ favs.splice(idx, 1); } else { favs.push({ id: p.id, nombre: p.nombre, oficio: p.oficio, foto: p.foto_url }); }
+        localStorage.setItem(key, JSON.stringify(favs));
+        updateFav();
+      };
+    }
     return api('resenas?profesional_id=eq.' + id + '&select=*&order=created_at.desc');
   }).then(function(rows){
     if(rows && rows.length){
