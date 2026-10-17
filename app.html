@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Descubrir — Magister</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Source Sans 3',system-ui,sans-serif;background:#0a0c10;color:#fff;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{padding:12px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1e242e}
+.logo{font-size:20px;font-weight:900;letter-spacing:1px;color:#fff;text-decoration:none}
+.logo .s{background:linear-gradient(135deg,#ff6b8a,#ff8e53);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hd-btns{display:flex;gap:8px}
+.hd-btns a{color:#fff;text-decoration:none;font-size:22px;padding:8px}
+main{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;position:relative}
+.card{width:100%;max-width:380px;height:min(62vh,520px);background:#12161d;border-radius:24px;overflow:hidden;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.card img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
+.card .noph{position:absolute;inset:0;display:grid;place-content:center;font-size:80px;background:linear-gradient(135deg,#2a2e35,#12161d)}
+.card-info{position:absolute;bottom:0;left:0;right:0;padding:80px 20px 20px;background:linear-gradient(transparent,rgba(0,0,0,.85))}
+.card-info h2{font-size:26px}
+.card-info p{font-size:14px;color:#c9cdd4;margin-top:4px}
+.actions{display:flex;gap:20px;justify-content:center;padding:18px}
+.act{width:68px;height:68px;border-radius:50%;border:0;font-size:28px;cursor:pointer;display:grid;place-content:center;font-family:inherit}
+.act.no{background:#1e242e;color:#ff6b8a}
+.act.yes{background:linear-gradient(135deg,#ff6b8a,#ff8e53);color:#fff;width:80px;height:80px;font-size:34px}
+.empty{text-align:center;color:#9aa0a8;padding:40px 20px}
+.empty .ic{font-size:60px;margin-bottom:16px}
+.match-ov{position:fixed;inset:0;background:rgba(10,12,16,.95);z-index:100;display:none;place-content:center;text-align:center;padding:20px}
+.match-ov.show{display:grid}
+.match-ov h1{font-size:48px;background:linear-gradient(135deg,#ff6b8a,#ff8e53);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:12px}
+.match-ov p{color:#c9cdd4;margin-bottom:24px}
+.match-ov .btn{padding:14px 40px;border-radius:999px;font-size:16px;font-weight:800;border:0;cursor:pointer;font-family:inherit;margin:6px}
+.match-ov .btn-p{background:linear-gradient(135deg,#ff6b8a,#ff8e53);color:#fff}
+.match-ov .btn-s{background:#1e242e;color:#fff}
+</style>
+</head>
+<body>
+<header>
+  <a class="logo" href="./">MAGI<span class="s">STER</span></a>
+  <div class="hd-btns">
+    <a href="matches.html" title="Matches">💘</a>
+    <a href="mi-perfil-citas.html" title="Mi perfil">👤</a>
+  </div>
+</header>
+<main id="main"><div class="empty"><div class="ic">💕</div><p>Cargando perfiles...</p></div></main>
+<div class="actions" id="actions" style="display:none">
+  <button class="act no" id="btn-no">✕</button>
+  <button class="act yes" id="btn-yes">♥</button>
+</div>
+<div class="match-ov" id="match-ov">
+  <div>
+    <h1>¡Match!</h1>
+    <p id="match-txt">Les gustaron mutuamente</p>
+    <button class="btn btn-p" id="match-chat">Enviar mensaje</button><br>
+    <button class="btn btn-s" id="match-next">Seguir descubriendo</button>
+  </div>
+</div>
+<script>
+var SUPABASE_URL = 'https://tyqogeeiflolwpqneroqm.supabase.co';
+var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR5cW9nZWlmbG9sd3BxbmVyb3FtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxOTQ4MzQsImV4cCI6MjEwNzc3MDgzNH0.6XSOhs5B_fQkiunJ7tc3ZwhvAZh2-i-nqd5fXY_CyCs';
+var sess = null;
+try { sess = JSON.parse(localStorage.getItem('magister_session') || 'null'); } catch(e){}
+if(!sess || !sess.access_token){ location.href = 'cuenta.html'; }
+var tok = sess.access_token, uid = sess.user.id;
+function h(ct){ var o = { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + tok }; if(ct) o['Content-Type'] = 'application/json'; return o; }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+var ME = null, QUEUE = [], CUR = null, LASTMATCH = null;
+function load(){
+  fetch(SUPABASE_URL + '/rest/v1/citas_perfiles?user_id=eq.' + uid + '&select=*', { headers: h() })
+  .then(function(r){ return r.json(); }).then(function(rows){
+    ME = (rows || [])[0];
+    if(!ME){ location.href = 'mi-perfil-citas.html'; return; }
+    return fetch(SUPABASE_URL + '/rest/v1/citas_likes?de_user_id=eq.' + uid + '&select=para_perfil_id', { headers: h() });
+  }).then(function(r){ return r.json(); }).then(function(likes){
+    var vistos = {};
+    (likes || []).forEach(function(l){ vistos[l.para_perfil_id] = 1; });
+    var busca = ME.busca || 'todos';
+    var f = 'user_id=neq.' + uid;
+    return fetch(SUPABASE_URL + '/rest/v1/citas_perfiles?select=*' + '&' + f, { headers: h() })
+    .then(function(r){ return r.json(); }).then(function(all){
+      QUEUE = (all || []).filter(function(p){
+        if(vistos[p.id]) return false;
+        if(busca === 'hombres' && p.genero !== 'hombre') return false;
+        if(busca === 'mujeres' && p.genero !== 'mujer') return false;
+        return true;
+      });
+      next();
+    });
+  });
+}
+function next(){
+  CUR = QUEUE.shift() || null;
+  var main = document.getElementById('main');
+  var acts = document.getElementById('actions');
+  if(!CUR){
+    main.innerHTML = '<div class="empty"><div class="ic">🎉</div><p>Ya viste todos los perfiles.<br>Vuelve más tarde.</p></div>';
+    acts.style.display = 'none';
+    return;
+  }
+  acts.style.display = '';
+  main.innerHTML = '<div class="card">'
+    + (CUR.foto_url ? '<img src="' + esc(CUR.foto_url) + '">' : '<div class="noph">👤</div>')
+    + '<div class="card-info"><h2>' + esc(CUR.nombre) + ', ' + CUR.edad + '</h2>'
+    + (CUR.bio ? '<p>' + esc(CUR.bio) + '</p>' : '')
+    + (CUR.ciudad ? '<p>📍 ' + esc(CUR.ciudad) + '</p>' : '')
+    + '</div></div>';
+}
+function votar(tipo){
+  if(!CUR) return;
+  var p = CUR;
+  fetch(SUPABASE_URL + '/rest/v1/citas_likes', {
+    method: 'POST', headers: Object.assign(h(true), { 'Prefer': 'return=minimal' }),
+    body: JSON.stringify({ de_user_id: uid, para_perfil_id: p.id, tipo: tipo })
+  }).then(function(){
+    if(tipo !== 'like'){ next(); return; }
+    // Verificar si es match mutuo
+    return fetch(SUPABASE_URL + '/rest/v1/citas_perfiles?id=eq.' + p.id + '&select=user_id', { headers: h() })
+    .then(function(r){ return r.json(); }).then(function(rows){
+      var otroUid = (rows[0] || {}).user_id;
+      if(!otroUid){ next(); return; }
+      return fetch(SUPABASE_URL + '/rest/v1/citas_likes?de_user_id=eq.' + otroUid + '&para_perfil_id=eq.' + ME.id + '&tipo=eq.like&select=id', { headers: h() })
+      .then(function(r){ return r.json(); }).then(function(l){
+        if(l && l.length){
+          // ¡MATCH!
+          var u1 = uid < otroUid ? uid : otroUid, u2 = uid < otroUid ? otroUid : uid;
+          return fetch(SUPABASE_URL + '/rest/v1/citas_matches', {
+            method: 'POST', headers: Object.assign(h(true), { 'Prefer': 'return=representation' }),
+            body: JSON.stringify({ user1_id: u1, user2_id: u2 })
+          }).then(function(r){ return r.json(); }).then(function(m){
+            LASTMATCH = (m[0] || {}).id;
+            document.getElementById('match-txt').textContent = 'Tú y ' + p.nombre + ' se gustaron';
+            document.getElementById('match-ov').classList.add('show');
+          });
+        } else { next(); }
+      });
+    });
+  });
+}
+document.getElementById('btn-no').onclick = function(){ votar('pass'); };
+document.getElementById('btn-yes').onclick = function(){ votar('like'); };
+document.getElementById('match-next').onclick = function(){
+  document.getElementById('match-ov').classList.remove('show');
+  next();
+};
+document.getElementById('match-chat').onclick = function(){
+  if(LASTMATCH) location.href = 'chat.html?m=' + LASTMATCH;
+};
+load();
+</script>
+</body>
+</html>

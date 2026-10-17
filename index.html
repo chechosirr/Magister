@@ -3,94 +3,58 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Magister — Profesionales de la salud</title>
+<title>Magister — Citas en Nicaragua</title>
 <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#ffffff;--txt:#111111;--mut:#4a4a52;--card:#0a0c10;--line:#1e242e;--acc:#4a4a52}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Source Sans 3',system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-direction:column}
-a{color:inherit}
-.wrap{max-width:1100px;margin:0 auto;padding:0 18px;width:100%}
-header{background:#2a2a2e;padding:14px 0;position:sticky;top:0;z-index:50}
+body{font-family:'Source Sans 3',system-ui,sans-serif;background:#0a0c10;color:#fff;min-height:100vh}
+.wrap{max-width:1100px;margin:0 auto;padding:0 18px}
+header{padding:16px 0;position:absolute;top:0;left:0;right:0;z-index:10}
 .hd{display:flex;align-items:center;justify-content:space-between}
-.logo{font-size:24px;font-weight:900;text-decoration:none;letter-spacing:1px}
-.logo .w{color:#000}.logo .s{background:linear-gradient(135deg,#ffffff,#c9ced6 40%,#8a8f98 60%,#e8ebf0);-webkit-background-clip:text;background-clip:text;color:transparent}
-.nav{display:flex;gap:8px;align-items:center}
-.nav a{color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:8px 14px;border-radius:10px}
-.nav a.cta{background:linear-gradient(135deg,#ffffff,#d9dee6 30%,#a9b2c0 50%,#f2f4f8 70%,#c3cad4);color:#0a0c10;font-weight:800}
-.hero{background:#2a2a2e;color:#fff;text-align:center;padding:56px 18px 48px;position:relative;overflow:hidden}
-.hero h1{font-size:clamp(28px,6vw,46px);font-weight:900;margin-bottom:12px}
-.hero p{font-size:17px;color:#c9cdd4;max-width:560px;margin:0 auto 26px}
-.hero-search{display:flex;max-width:580px;margin:0 auto;background:rgba(16,19,24,.9);border:2px solid #2c3542;border-radius:18px;padding:6px;gap:6px}
-.hero-search input{flex:1;min-width:0;background:none;border:0;outline:0;color:#fff;font-size:17px;padding:14px 18px;font-family:inherit}
-.hero-search input::placeholder{color:#9aa0a8}
-.hero-search button{background:linear-gradient(135deg,#ffffff,#d9dee6 30%,#a9b2c0 50%,#f2f4f8 70%,#c3cad4);color:#0a0c10;border:0;border-radius:13px;font-weight:800;font-size:16px;padding:0 32px;cursor:pointer;font-family:inherit}
-.cats{padding:36px 0}
-.sec-head h2{font-size:22px;color:#111;margin-bottom:16px}
-.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
-.cat-card{background:#0a0c10;border:1px solid var(--line);border-radius:16px;padding:22px 16px;text-align:center;text-decoration:none;transition:transform .18s}
-.cat-card:hover{transform:translateY(-3px)}
-.cat-card .ic{font-size:32px;margin-bottom:8px}
-.cat-card b{color:#fff;font-size:14px;display:block}
-.cat-card small{color:#9aa0a8;font-size:12px}
-.how{background:#0a0c10;border:1px solid var(--line);border-radius:22px;padding:30px 26px;margin:36px 0;color:#fff}
-.how h2{font-size:22px;margin-bottom:18px;color:#fff}
-.steps{display:grid;gap:16px}
-.step{display:flex;gap:14px;align-items:flex-start}
-.n{flex:0 0 36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#ffffff,#d9dee6 30%,#a9b2c0 50%,#f2f4f8 70%,#c3cad4);color:#0a0c10;font-weight:900;display:grid;place-content:center}
-.step p{font-size:14px;color:#fff;line-height:1.6;margin:0}
-.step p b{color:#fff}
-footer{margin-top:auto;background:#2a2a2e;color:#9aa0a8;text-align:center;padding:26px 18px;font-size:13px}
-@media(max-width:640px){.cat-grid{grid-template-columns:repeat(3,1fr)}}
+.logo{font-size:26px;font-weight:900;letter-spacing:1px;text-decoration:none;color:#fff}
+.logo .s{background:linear-gradient(135deg,#ff6b8a,#ff8e53);-webkit-background-clip:text;background-clip:text;color:transparent}
+.nav a{color:#fff;text-decoration:none;font-size:14px;font-weight:700;padding:10px 20px;border-radius:999px;border:1px solid rgba(255,255,255,.3)}
+.nav a.cta{background:linear-gradient(135deg,#ff6b8a,#ff8e53);border:0}
+.hero{min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;background:linear-gradient(135deg,#1a0d14 0%,#0a0c10 60%);padding:80px 18px 40px;position:relative;overflow:hidden}
+.hero::before{content:'💕';position:absolute;font-size:400px;opacity:.05;top:-40px;right:-40px}
+.hero h1{font-size:clamp(36px,8vw,64px);font-weight:900;margin-bottom:16px;line-height:1.1}
+.hero h1 .hl{background:linear-gradient(135deg,#ff6b8a,#ff8e53);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p{font-size:18px;color:#c9cdd4;max-width:520px;margin:0 auto 32px}
+.hero-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn{padding:16px 40px;border-radius:999px;font-size:17px;font-weight:800;text-decoration:none;font-family:inherit;cursor:pointer;border:0}
+.btn-p{background:linear-gradient(135deg,#ff6b8a,#ff8e53);color:#fff}
+.btn-s{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2)}
+.feat{padding:60px 0}
+.feat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;margin-top:28px}
+.feat-card{background:#12161d;border:1px solid #1e242e;border-radius:20px;padding:28px;text-align:center}
+.feat-card .ic{font-size:44px;margin-bottom:12px}
+.feat-card b{font-size:17px;display:block;margin-bottom:8px}
+.feat-card p{font-size:14px;color:#9aa0a8}
+footer{text-align:center;padding:30px 18px;color:#4a4a52;font-size:13px}
 </style>
 </head>
 <body>
 <header><div class="wrap hd">
-  <a class="logo" href="./"><span class="w">MAGI</span><span class="s">STER</span></a>
-  <nav class="nav">
-    <a href="buscar.html">Buscar</a>
-    <a href="cuenta.html" class="cta">Soy profesional</a>
-  </nav>
+  <a class="logo" href="./">MAGI<span class="s">STER</span></a>
+  <nav class="nav"><a href="cuenta.html">Entrar</a></nav>
 </div></header>
-
 <section class="hero">
-  <h1>Encuentra al profesional de salud que necesitas</h1>
-  <p>Médicos, especialistas y profesionales de la salud. Verificados y con reseñas reales.</p>
-  <form class="hero-search" action="buscar.html" method="get">
-    <input name="q" type="search" placeholder="¿Qué especialista buscas?">
-    <button type="submit">Buscar</button>
-  </form>
-</section>
-
-<main class="wrap">
-  <section class="cats">
-    <div class="sec-head"><h2>Categorías</h2></div>
-    <div class="cat-grid" id="cat-grid"></div>
-  </section>
-
-  <section class="how">
-    <h2>¿Cómo funciona Magister?</h2>
-    <div class="steps">
-      <div class="step"><div class="n">1</div><p><b>Busca</b> el especialista que necesitas por área o nombre.</p></div>
-      <div class="step"><div class="n">2</div><p><b>Revisa</b> su perfil, fotos de trabajos y reseñas de clientes.</p></div>
-      <div class="step"><div class="n">3</div><p><b>Contacta</b> directo por WhatsApp y coordina el servicio.</p></div>
+  <div>
+    <h1>Encuentra a tu <span class="hl">persona</span><br> en Nicaragua</h1>
+    <p>Desliza, haz match y conversa. La forma más divertida de conocer gente cerca de ti.</p>
+    <div class="hero-btns">
+      <a class="btn btn-p" href="cuenta.html">Crear cuenta gratis</a>
+      <a class="btn btn-s" href="app.html">Ya tengo cuenta</a>
     </div>
-  </section>
-</main>
-
-<footer>Magister — Profesionales de la salud en Nicaragua</footer>
-
-<script>
-var CATS = [
-  {n:'Medicina general', ic:'🩺'}, {n:'Pediatría', ic:'👶'}, {n:'Ginecología', ic:'🤰'},
-  {n:'Odontología', ic:'🦷'}, {n:'Dermatología', ic:'🧴'}, {n:'Cardiología', ic:'❤️'},
-  {n:'Oftalmología', ic:'👁️'}, {n:'Psicología', ic:'🧠'}, {n:'Fisioterapia', ic:'🦵'},
-  {n:'Nutrición', ic:'🥗'}, {n:'Ortopedia', ic:'🦴'}, {n:'Neurología', ic:'🧬'}
-];
-document.getElementById('cat-grid').innerHTML = CATS.map(function(c){
-  return '<a class="cat-card" href="buscar.html?cat=' + encodeURIComponent(c.n) + '">'
-    + '<div class="ic">' + c.ic + '</div><b>' + c.n + '</b></a>';
-}).join('');
-</script>
+  </div>
+</section>
+<section class="feat"><div class="wrap">
+  <div class="feat-grid">
+    <div class="feat-card"><div class="ic">💘</div><b>Desliza</b><p>Ve perfiles y desliza a la derecha si te gusta, a la izquierda si no.</p></div>
+    <div class="feat-card"><div class="ic">✨</div><b>Haz Match</b><p>Cuando los dos se gustan, ¡es un match! Ya pueden conversar.</p></div>
+    <div class="feat-card"><div class="ic">💬</div><b>Conversa</b><p>Chatea con tus matches y conoce a esa persona especial.</p></div>
+  </div>
+</div></section>
+<footer>Magister — Citas en Nicaragua · +18</footer>
 </body>
 </html>

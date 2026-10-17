@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Chat — Magister</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Source Sans 3',system-ui,sans-serif;background:#0a0c10;color:#fff;height:100vh;display:flex;flex-direction:column}
+header{padding:12px 18px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #1e242e}
+header a{color:#fff;text-decoration:none;font-size:22px}
+header .ph{width:40px;height:40px;border-radius:50%;background:#2a2e35;display:grid;place-content:center;font-size:20px;overflow:hidden}
+header .ph img{width:100%;height:100%;object-fit:cover}
+header b{font-size:16px}
+#msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+.b{max-width:75%;padding:10px 14px;border-radius:18px;font-size:15px;line-height:1.4}
+.b.me{align-self:flex-end;background:linear-gradient(135deg,#ff6b8a,#ff8e53);border-bottom-right-radius:6px}
+.b.them{align-self:flex-start;background:#1e242e;border-bottom-left-radius:6px}
+.bar{display:flex;gap:8px;padding:12px;border-top:1px solid #1e242e}
+.bar input{flex:1;background:#12161d;border:1px solid #2b3049;border-radius:999px;padding:12px 18px;color:#fff;font-family:inherit;font-size:15px;outline:0}
+.bar button{background:linear-gradient(135deg,#ff6b8a,#ff8e53);border:0;color:#fff;width:48px;height:48px;border-radius:50%;font-size:20px;cursor:pointer;flex:0 0 auto}
+</style>
+</head>
+<body>
+<header><a href="matches.html">←</a><div class="ph" id="ph">👤</div><b id="nm">...</b></header>
+<div id="msgs"></div>
+<form class="bar" id="f"><input id="t" placeholder="Escribe un mensaje..." autocomplete="off" maxlength="500"><button type="submit">➤</button></form>
+<script>
+var SUPABASE_URL = 'https://tyqogeeiflolwpqneroqm.supabase.co';
+var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR5cW9nZWlmbG9sd3BxbmVyb3FtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxOTQ4MzQsImV4cCI6MjEwNzc3MDgzNH0.6XSOhs5B_fQkiunJ7tc3ZwhvAZh2-i-nqd5fXY_CyCs';
+var sess = null;
+try { sess = JSON.parse(localStorage.getItem('magister_session') || 'null'); } catch(e){}
+if(!sess || !sess.access_token){ location.href = 'cuenta.html'; }
+var tok = sess.access_token, uid = sess.user.id;
+var MID = new URLSearchParams(location.search).get('m');
+if(!MID){ location.href = 'matches.html'; }
+function h(ct){ var o = { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + tok }; if(ct) o['Content-Type'] = 'application/json'; return o; }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+fetch(SUPABASE_URL + '/rest/v1/citas_matches?id=eq.' + MID + '&select=*', { headers: h() })
+.then(function(r){ return r.json(); }).then(function(ms){
+  var m = (ms || [])[0];
+  if(!m || (m.user1_id !== uid && m.user2_id !== uid)){ location.href = 'matches.html'; return; }
+  var oid = m.user1_id === uid ? m.user2_id : m.user1_id;
+  return fetch(SUPABASE_URL + '/rest/v1/citas_perfiles?user_id=eq.' + oid + '&select=*', { headers: h() })
+  .then(function(r){ return r.json(); }).then(function(ps){
+    var p = (ps || [])[0] || {};
+    document.getElementById('nm').textContent = p.nombre || 'Chat';
+    if(p.foto_url) document.getElementById('ph').innerHTML = '<img src="' + esc(p.foto_url) + '">';
+    loadMsgs();
+    setInterval(loadMsgs, 4000);
+  });
+});
+function loadMsgs(){
+  fetch(SUPABASE_URL + '/rest/v1/citas_mensajes?match_id=eq.' + MID + '&select=*&order=created_at.asc', { headers: h() })
+  .then(function(r){ return r.json(); }).then(function(rows){
+    var box = document.getElementById('msgs');
+    box.innerHTML = (rows || []).map(function(m){
+      return '<div class="b ' + (m.de_user_id === uid ? 'me' : 'them') + '">' + esc(m.texto) + '</div>';
+    }).join('');
+    box.scrollTop = box.scrollHeight;
+  });
+}
+document.getElementById('f').onsubmit = function(e){
+  e.preventDefault();
+  var t = document.getElementById('t').value.trim();
+  if(!t) return;
+  document.getElementById('t').value = '';
+  fetch(SUPABASE_URL + '/rest/v1/citas_mensajes', {
+    method: 'POST', headers: Object.assign(h(true), { 'Prefer': 'return=minimal' }),
+    body: JSON.stringify({ match_id: MID, de_user_id: uid, texto: t })
+  }).then(loadMsgs);
+};
+</script>
+</body>
+</html>

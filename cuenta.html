@@ -83,7 +83,7 @@ document.getElementById('f').onsubmit = function(e){
     var tipo = mode === 'up' ? document.getElementById('tipo').value : (localStorage.getItem('magister_tipo') || 'cliente');
     localStorage.setItem('magister_tipo', tipo);
     msg.className = 'msg ok'; msg.textContent = '¡Listo! Redirigiendo...';
-    setTimeout(function(){ location.href = tipo === 'profesional' ? 'mi-perfil.html' : 'perfil-cliente.html'; }, 800);
+    setTimeout(function(){ location.href = 'mi-perfil-citas.html'; }, 800);
   };
   if(mode === 'in'){
     btn.textContent = 'Entrando...';

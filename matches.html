@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mis matches — Magister</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Source Sans 3',system-ui,sans-serif;background:#0a0c10;color:#fff;min-height:100vh}
+.wrap{max-width:560px;margin:0 auto;padding:0 18px 40px}
+header{padding:12px 18px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #1e242e;position:sticky;top:0;background:#0a0c10;z-index:5}
+header a{color:#fff;text-decoration:none;font-size:22px}
+header h1{font-size:18px}
+.m{background:#12161d;border:1px solid #1e242e;border-radius:16px;padding:14px;margin:12px 0;display:flex;gap:12px;align-items:center;text-decoration:none}
+.m .ph{width:56px;height:56px;border-radius:50%;background:#2a2e35;display:grid;place-content:center;font-size:26px;overflow:hidden;flex:0 0 auto}
+.m .ph img{width:100%;height:100%;object-fit:cover}
+.m b{color:#fff;font-size:16px;display:block}
+.m small{color:#9aa0a8;font-size:13px}
+.empty{text-align:center;color:#9aa0a8;padding:60px 20px}
+.empty .ic{font-size:60px;margin-bottom:12px}
+</style>
+</head>
+<body>
+<header><a href="app.html">←</a><h1>Mis matches</h1></header>
+<div class="wrap" id="list"><div class="empty"><div class="ic">💘</div><p>Cargando...</p></div></div>
+<script>
+var SUPABASE_URL = 'https://tyqogeeiflolwpqneroqm.supabase.co';
+var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR5cW9nZWlmbG9sd3BxbmVyb3FtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxOTQ4MzQsImV4cCI6MjEwNzc3MDgzNH0.6XSOhs5B_fQkiunJ7tc3ZwhvAZh2-i-nqd5fXY_CyCs';
+var sess = null;
+try { sess = JSON.parse(localStorage.getItem('magister_session') || 'null'); } catch(e){}
+if(!sess || !sess.access_token){ location.href = 'cuenta.html'; }
+var tok = sess.access_token, uid = sess.user.id;
+function h(){ return { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + tok }; }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+fetch(SUPABASE_URL + '/rest/v1/citas_matches?or=(user1_id.eq.' + uid + ',user2_id.eq.' + uid + ')&select=*&order=created_at.desc', { headers: h() })
+.then(function(r){ return r.json(); }).then(function(ms){
+  ms = ms || [];
+  if(!ms.length){
+    document.getElementById('list').innerHTML = '<div class="empty"><div class="ic">💔</div><p>Aún no tienes matches.<br>¡Sigue descubriendo!</p></div>';
+    return;
+  }
+  var otros = ms.map(function(m){ return m.user1_id === uid ? m.user2_id : m.user1_id; });
+  return fetch(SUPABASE_URL + '/rest/v1/citas_perfiles?user_id=in.(' + otros.join(',') + ')&select=*', { headers: h() })
+  .then(function(r){ return r.json(); }).then(function(ps){
+    var map = {};
+    (ps || []).forEach(function(p){ map[p.user_id] = p; });
+    document.getElementById('list').innerHTML = ms.map(function(m){
+      var oid = m.user1_id === uid ? m.user2_id : m.user1_id;
+      var p = map[oid] || { nombre: 'Usuario', edad: '' };
+      return '<a class="m" href="chat.html?m=' + m.id + '">'
+        + '<div class="ph">' + (p.foto_url ? '<img src="' + esc(p.foto_url) + '">' : '👤') + '</div>'
+        + '<div><b>' + esc(p.nombre) + (p.edad ? ', ' + p.edad : '') + '</b><small>Toca para conversar</small></div></a>';
+    }).join('');
+  });
+});
+</script>
+</body>
+</html>
