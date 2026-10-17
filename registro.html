@@ -32,7 +32,7 @@ button.save{width:100%;margin-top:22px;background:linear-gradient(135deg,#ffffff
   <p class="sub">Crea tu perfil y empieza a recibir clientes.</p>
   <form id="f">
     <label>Nombre completo *</label><input id="nombre" required>
-    <label>Oficio / Profesión *</label>
+    <label>Especialidad *</label>
     <select id="oficio" required><option value="">Seleccionar...</option></select>
     <label>Descripción de tus servicios</label>
     <textarea id="descripcion" placeholder="Cuéntales a tus clientes qué haces..."></textarea>
@@ -47,7 +47,7 @@ button.save{width:100%;margin-top:22px;background:linear-gradient(135deg,#ffffff
 <script>
 var SUPABASE_URL = 'https://tyqogeeiflolwpqneroqm.supabase.co';
 var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR5cW9nZWlmbG9sd3BxbmVyb3FtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxOTQ4MzQsImV4cCI6MjEwNzc3MDgzNH0.6XSOhs5B_fQkiunJ7tc3ZwhvAZh2-i-nqd5fXY_CyCs';
-var OFICIOS = ['Plomería','Electricidad','Carpintería','Pintura','Albañilería','Jardinería','Limpieza','Diseño gráfico','Desarrollo web','Contabilidad','Abogacía','Medicina','Belleza','Mecánica','Refrigeración','Seguridad','Otro'];
+var OFICIOS = ['Medicina general','Pediatría','Ginecología','Odontología','Dermatología','Cardiología','Oftalmología','Psicología','Fisioterapia','Nutrición','Ortopedia','Neurología','Otro'];
 document.getElementById('oficio').innerHTML = '<option value="">Seleccionar...</option>' + OFICIOS.map(function(o){return '<option>'+o+'</option>'}).join('');
 function slug(s){ return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') + '-' + Math.random().toString(36).slice(2,7); }
 document.getElementById('f').onsubmit = function(e){

@@ -30,7 +30,7 @@ main{padding:24px 0 60px}
 <body>
 <header><div class="wrap hd">
   <a class="logo" href="./">MAGI<span class="s">STER</span></a>
-  <label class="search"><input id="q" type="search" placeholder="Buscar por nombre u oficio..."></label>
+  <label class="search"><input id="q" type="search" placeholder="Buscar por nombre o especialidad..."></label>
 </div></header>
 <main class="wrap">
   <div class="grid" id="grid"><p class="empty">Próximamente: profesionales registrados.</p></div>
@@ -53,7 +53,7 @@ function render(){
     return (p.nombre + ' ' + p.oficio + ' ' + (p.ciudad || '')).toLowerCase().indexOf(term) >= 0;
   });
   if(!list.length){
-    grid.innerHTML = '<p class="empty">' + (PROFS.length ? 'Sin resultados. Prueba con otra búsqueda.' : 'Aún no hay profesionales registrados.') + '</p>';
+    grid.innerHTML = '<p class="empty">' + (PROFS.length ? 'Sin resultados. Prueba con otra búsqueda.' : 'Aún no hay profesionales de salud registrados.') + '</p>';
     return;
   }
   grid.innerHTML = list.map(function(p){

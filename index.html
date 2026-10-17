@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Magister — Profesionales de confianza</title>
+<title>Magister — Profesionales de la salud</title>
 <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#ffffff;--txt:#111111;--mut:#4a4a52;--card:#0a0c10;--line:#1e242e;--acc:#4a4a52}
@@ -54,10 +54,10 @@ footer{margin-top:auto;background:#2a2a2e;color:#9aa0a8;text-align:center;paddin
 </div></header>
 
 <section class="hero">
-  <h1>Encuentra al profesional que necesitas</h1>
-  <p>Plomeros, electricistas, diseñadores, abogados y más. Verificados y con reseñas reales.</p>
+  <h1>Encuentra al profesional de salud que necesitas</h1>
+  <p>Médicos, especialistas y profesionales de la salud. Verificados y con reseñas reales.</p>
   <form class="hero-search" action="buscar.html" method="get">
-    <input name="q" type="search" placeholder="¿Qué profesional buscas?">
+    <input name="q" type="search" placeholder="¿Qué especialista buscas?">
     <button type="submit">Buscar</button>
   </form>
 </section>
@@ -71,23 +71,21 @@ footer{margin-top:auto;background:#2a2a2e;color:#9aa0a8;text-align:center;paddin
   <section class="how">
     <h2>¿Cómo funciona Magister?</h2>
     <div class="steps">
-      <div class="step"><div class="n">1</div><p><b>Busca</b> el profesional que necesitas por oficio o nombre.</p></div>
+      <div class="step"><div class="n">1</div><p><b>Busca</b> el especialista que necesitas por área o nombre.</p></div>
       <div class="step"><div class="n">2</div><p><b>Revisa</b> su perfil, fotos de trabajos y reseñas de clientes.</p></div>
       <div class="step"><div class="n">3</div><p><b>Contacta</b> directo por WhatsApp y coordina el servicio.</p></div>
     </div>
   </section>
 </main>
 
-<footer>Magister — Conectando profesionales con clientes en Nicaragua</footer>
+<footer>Magister — Profesionales de la salud en Nicaragua</footer>
 
 <script>
 var CATS = [
-  {n:'Plomería', ic:'🔧'}, {n:'Electricidad', ic:'⚡'}, {n:'Carpintería', ic:'🪚'},
-  {n:'Pintura', ic:'🎨'}, {n:'Albañilería', ic:'🧱'}, {n:'Jardinería', ic:'🌱'},
-  {n:'Limpieza', ic:'🧹'}, {n:'Diseño gráfico', ic:'✏️'}, {n:'Desarrollo web', ic:'💻'},
-  {n:'Contabilidad', ic:'📊'}, {n:'Abogacía', ic:'⚖️'}, {n:'Medicina', ic:'🩺'},
-  {n:'Belleza', ic:'💇'}, {n:'Mecánica', ic:'🔩'}, {n:'Refrigeración', ic:'❄️'},
-  {n:'Seguridad', ic:'🛡️'}
+  {n:'Medicina general', ic:'🩺'}, {n:'Pediatría', ic:'👶'}, {n:'Ginecología', ic:'🤰'},
+  {n:'Odontología', ic:'🦷'}, {n:'Dermatología', ic:'🧴'}, {n:'Cardiología', ic:'❤️'},
+  {n:'Oftalmología', ic:'👁️'}, {n:'Psicología', ic:'🧠'}, {n:'Fisioterapia', ic:'🦵'},
+  {n:'Nutrición', ic:'🥗'}, {n:'Ortopedia', ic:'🦴'}, {n:'Neurología', ic:'🧬'}
 ];
 document.getElementById('cat-grid').innerHTML = CATS.map(function(c){
   return '<a class="cat-card" href="buscar.html?cat=' + encodeURIComponent(c.n) + '">'
