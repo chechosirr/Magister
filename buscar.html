@@ -36,11 +36,36 @@ main{padding:24px 0 60px}
   <div class="grid" id="grid"><p class="empty">Próximamente: profesionales registrados.</p></div>
 </main>
 <script>
+var SUPABASE_URL = 'https://tyqogeeiflolwpqneroqm.supabase.co';
+var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR5cW9nZWlmbG9sd3BxbmVyb3FtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxOTQ4MzQsImV4cCI6MjEwNzc3MDgzNH0.6XSOhs5B_fQkiunJ7tc3ZwhvAZh2-i-nqd5fXY_CyCs';
+function api(path){
+  return fetch(SUPABASE_URL + '/rest/v1/' + path, {
+    headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
+  }).then(function(r){ return r.json(); });
+}
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+var PROFS = [];
+function render(){
+  var grid = document.getElementById('grid');
+  var term = (document.getElementById('q').value || '').trim().toLowerCase();
+  var list = PROFS.filter(function(p){
+    if(!term) return true;
+    return (p.nombre + ' ' + p.oficio + ' ' + (p.ciudad || '')).toLowerCase().indexOf(term) >= 0;
+  });
+  if(!list.length){
+    grid.innerHTML = '<p class="empty">' + (PROFS.length ? 'Sin resultados. Prueba con otra búsqueda.' : 'Aún no hay profesionales registrados.') + '</p>';
+    return;
+  }
+  grid.innerHTML = list.map(function(p){
+    return '<a class="card" href="profesional.html?id=' + p.id + '">'
+      + (p.foto_url ? '<img src="' + esc(p.foto_url) + '">' : '<div class="ph">👤</div>')
+      + '<div class="card-body"><b>' + esc(p.nombre) + '</b><small>' + esc(p.oficio) + (p.ciudad ? ' · ' + esc(p.ciudad) : '') + '</small></div></a>';
+  }).join('');
+}
 var q = new URLSearchParams(location.search).get('q') || new URLSearchParams(location.search).get('cat') || '';
 if(q) document.getElementById('q').value = q;
-document.getElementById('q').addEventListener('input', function(){
-  // La búsqueda con Supabase viene en la próxima actualización
-});
+document.getElementById('q').addEventListener('input', render);
+api('profesionales?select=*&order=created_at.desc').then(function(rows){ PROFS = rows || []; render(); });
 </script>
 </body>
 </html>
