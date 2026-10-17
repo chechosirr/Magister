@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Registro profesional — Magister</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0c10;--txt:#fff;--mut:#9aa0a8;--line:#1e242e;--card:#12161d}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Source Sans 3',system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+.wrap{max-width:560px;margin:0 auto;padding:20px 18px 60px}
+header{background:#2a2a2e;padding:14px 0;margin-bottom:24px}
+.hd{max-width:560px;margin:0 auto;padding:0 18px;display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:22px;font-weight:900;text-decoration:none;letter-spacing:1px;color:#fff}
+.logo .s{background:linear-gradient(135deg,#ffffff,#c9ced6 40%,#8a8f98 60%,#e8ebf0);-webkit-background-clip:text;background-clip:text;color:transparent}
+h1{font-size:24px;margin-bottom:6px}
+.sub{color:var(--mut);font-size:14px;margin-bottom:20px}
+label{font-size:13px;color:#fff;display:block;margin:14px 0 6px;font-weight:600}
+input,select,textarea{width:100%;background:#0a0c13;border:1px solid #2b3049;border-radius:12px;padding:13px 15px;color:#fff;font-family:inherit;font-size:15px}
+textarea{resize:vertical;min-height:90px}
+button.save{width:100%;margin-top:22px;background:linear-gradient(135deg,#ffffff,#d9dee6 30%,#a9b2c0 50%,#f2f4f8 70%,#c3cad4);color:#0a0c10;border:0;border-radius:14px;padding:15px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit}
+.hint{font-size:12px;color:var(--mut);margin-top:4px}
+</style>
+</head>
+<body>
+<header><div class="hd">
+  <a class="logo" href="./">MAGI<span class="s">STER</span></a>
+</div></header>
+<div class="wrap">
+  <h1>Regístrate como profesional</h1>
+  <p class="sub">Crea tu perfil y empieza a recibir clientes.</p>
+  <form id="f">
+    <label>Nombre completo *</label><input id="nombre" required>
+    <label>Oficio / Profesión *</label>
+    <select id="oficio" required><option value="">Seleccionar...</option></select>
+    <label>Descripción de tus servicios</label>
+    <textarea id="descripcion" placeholder="Cuéntales a tus clientes qué haces..."></textarea>
+    <label>WhatsApp *</label><input id="whatsapp" required placeholder="505XXXXXXXX">
+    <label>Ciudad *</label><input id="ciudad" required>
+    <label>Departamento *</label><input id="departamento" required>
+    <label>Precio desde (USD, opcional)</label><input id="precio" type="number" min="0" step="0.01">
+    <label>Foto de perfil</label><input id="foto" type="file" accept="image/*">
+    <button class="save" type="submit">Crear mi perfil</button>
+  </form>
+</div>
+<script>
+var OFICIOS = ['Plomería','Electricidad','Carpintería','Pintura','Albañilería','Jardinería','Limpieza','Diseño gráfico','Desarrollo web','Contabilidad','Abogacía','Medicina','Belleza','Mecánica','Refrigeración','Seguridad','Otro'];
+document.getElementById('oficio').innerHTML = '<option value="">Seleccionar...</option>' + OFICIOS.map(function(o){return '<option>'+o+'</option>'}).join('');
+document.getElementById('f').onsubmit = function(e){
+  e.preventDefault();
+  alert('El registro completo con Supabase viene en la próxima actualización.');
+};
+</script>
+</body>
+</html>

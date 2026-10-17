@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Buscar profesionales — Magister</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Source Sans 3',system-ui,sans-serif;background:#fff;color:#111;min-height:100vh}
+.wrap{max-width:1100px;margin:0 auto;padding:0 18px}
+header{background:#2a2a2e;padding:14px 0;position:sticky;top:0;z-index:50}
+.hd{display:flex;align-items:center;gap:14px}
+.logo{font-size:22px;font-weight:900;text-decoration:none;letter-spacing:1px;color:#fff;flex:0 0 auto}
+.logo .s{background:linear-gradient(135deg,#ffffff,#c9ced6 40%,#8a8f98 60%,#e8ebf0);-webkit-background-clip:text;background-clip:text;color:transparent}
+.search{flex:1;display:flex;background:#0a0c10;border:2px solid #2c3542;border-radius:14px;padding:8px 14px;gap:8px;align-items:center}
+.search input{flex:1;min-width:0;background:none;border:0;outline:0;color:#fff;font-size:15px;font-family:inherit}
+.search input::placeholder{color:#9aa0a8}
+main{padding:24px 0 60px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
+.card{background:#0a0c10;border:1px solid #1e242e;border-radius:18px;overflow:hidden;text-decoration:none;display:flex;flex-direction:column}
+.card .ph{aspect-ratio:1;background:linear-gradient(135deg,#2a2e35,#12161d);display:grid;place-content:center;font-size:40px;color:#4a4a52}
+.card img{width:100%;aspect-ratio:1;object-fit:cover}
+.card-body{padding:12px}
+.card-body b{color:#fff;font-size:14px;display:block}
+.card-body small{color:#9aa0a8;font-size:12px}
+.empty{color:#4a4a52;text-align:center;padding:40px 0}
+</style>
+</head>
+<body>
+<header><div class="wrap hd">
+  <a class="logo" href="./">MAGI<span class="s">STER</span></a>
+  <label class="search"><input id="q" type="search" placeholder="Buscar por nombre u oficio..."></label>
+</div></header>
+<main class="wrap">
+  <div class="grid" id="grid"><p class="empty">Próximamente: profesionales registrados.</p></div>
+</main>
+<script>
+var q = new URLSearchParams(location.search).get('q') || new URLSearchParams(location.search).get('cat') || '';
+if(q) document.getElementById('q').value = q;
+document.getElementById('q').addEventListener('input', function(){
+  // La búsqueda con Supabase viene en la próxima actualización
+});
+</script>
+</body>
+</html>
