@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mi cuenta — Magister</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Source Sans 3',system-ui,sans-serif;background:#0a0c10;color:#fff;min-height:100vh}
+.wrap{max-width:440px;margin:0 auto;padding:40px 18px}
+header{background:#2a2a2e;padding:14px 0;margin-bottom:8px}
+.hd{max-width:440px;margin:0 auto;padding:0 18px}
+.logo{font-size:22px;font-weight:900;text-decoration:none;letter-spacing:1px;color:#fff}
+.logo .s{background:linear-gradient(135deg,#ffffff,#c9ced6 40%,#8a8f98 60%,#e8ebf0);-webkit-background-clip:text;background-clip:text;color:transparent}
+h1{font-size:24px;margin-bottom:6px}
+.sub{color:#9aa0a8;font-size:14px;margin-bottom:20px}
+.tabs{display:flex;gap:8px;margin-bottom:20px}
+.tabs button{flex:1;padding:12px;border:1px solid #2b3049;background:#12161d;color:#fff;border-radius:12px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.tabs button.on{background:#fff;color:#0a0c10;border-color:#fff}
+label{font-size:13px;display:block;margin:14px 0 6px;font-weight:600}
+input{width:100%;background:#0a0c13;border:1px solid #2b3049;border-radius:12px;padding:13px 15px;color:#fff;font-family:inherit;font-size:15px}
+button.go{width:100%;margin-top:22px;background:linear-gradient(135deg,#ffffff,#d9dee6 30%,#a9b2c0 50%,#f2f4f8 70%,#c3cad4);color:#0a0c10;border:0;border-radius:14px;padding:15px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit}
+.msg{margin-top:14px;font-size:14px;text-align:center;min-height:20px}
+.msg.err{color:#ff8a8a}.msg.ok{color:#7CFC98}
+</style>
+</head>
+<body>
+<header><div class="hd"><a class="logo" href="./">MAGI<span class="s">STER</span></a></div></header>
+<div class="wrap">
+  <h1>Mi cuenta</h1>
+  <p class="sub">Accede para gestionar tu perfil profesional.</p>
+  <div class="tabs">
+    <button id="t-in" class="on">Entrar</button>
+    <button id="t-up">Crear cuenta</button>
+  </div>
+  <form id="f">
+    <div id="f-nombre" style="display:none"><label>Nombre completo</label><input id="nombre"></div>
+    <label>Correo electrónico</label><input id="email" type="email" required>
+    <label>Contraseña</label><input id="pass" type="password" required minlength="6">
+    <button class="go" type="submit" id="btn">Entrar</button>
+    <div class="msg" id="msg"></div>
+  </form>
+</div>
+<script>
+var SUPABASE_URL = 'https://tyqogeeiflolwpqneroqm.supabase.co';
+var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR5cW9nZWlmbG9sd3BxbmVyb3FtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxOTQ4MzQsImV4cCI6MjEwNzc3MDgzNH0.6XSOhs5B_fQkiunJ7tc3ZwhvAZh2-i-nqd5fXY_CyCs';
+var mode = 'in';
+function setMode(m){
+  mode = m;
+  document.getElementById('t-in').className = m === 'in' ? 'on' : '';
+  document.getElementById('t-up').className = m === 'up' ? 'on' : '';
+  document.getElementById('f-nombre').style.display = m === 'up' ? '' : 'none';
+  document.getElementById('btn').textContent = m === 'in' ? 'Entrar' : 'Crear cuenta';
+}
+document.getElementById('t-in').onclick = function(){ setMode('in'); };
+document.getElementById('t-up').onclick = function(){ setMode('up'); };
+function auth(path, body){
+  return fetch(SUPABASE_URL + '/auth/v1/' + path, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_ANON, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); });
+}
+document.getElementById('f').onsubmit = function(e){
+  e.preventDefault();
+  var msg = document.getElementById('msg');
+  var btn = document.getElementById('btn');
+  msg.className = 'msg'; msg.textContent = '';
+  btn.disabled = true;
+  var email = document.getElementById('email').value.trim();
+  var pass = document.getElementById('pass').value;
+  var done = function(res){
+    btn.disabled = false;
+    if(!res.ok){ msg.className = 'msg err'; msg.textContent = res.j.msg || res.j.error_description || 'Error. Intenta de nuevo.'; return; }
+    localStorage.setItem('magister_session', JSON.stringify(res.j));
+    msg.className = 'msg ok'; msg.textContent = '¡Listo! Redirigiendo...';
+    setTimeout(function(){ location.href = 'mi-perfil.html'; }, 800);
+  };
+  if(mode === 'in'){
+    btn.textContent = 'Entrando...';
+    auth('token?grant_type=password', { email: email, password: pass }).then(done);
+  } else {
+    btn.textContent = 'Creando...';
+    auth('signup', { email: email, password: pass }).then(done);
+  }
+};
+</script>
+</body>
+</html>
