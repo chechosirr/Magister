@@ -97,14 +97,18 @@ document.getElementById('f').onsubmit = function(e){
     var req = PROF
       ? fetch(SUPABASE_URL + '/rest/v1/citas_perfiles?id=eq.' + PROF.id, { method: 'PATCH', headers: h(true), body: JSON.stringify(data) })
       : fetch(SUPABASE_URL + '/rest/v1/citas_perfiles', { method: 'POST', headers: Object.assign(h(true), { 'Prefer': 'return=representation' }), body: JSON.stringify(data) });
-    return req.then(function(r){ if(!r.ok) throw 0; return r.json().catch(function(){ return []; }); });
+    return req.then(function(r){
+      if(!r.ok) return r.text().then(function(txt){ throw new Error('Error ' + r.status + ': ' + txt.slice(0,100)); });
+      return r.json().catch(function(){ return []; });
+    });
   }).then(function(rows){
     if(rows[0]) PROF = rows[0];
     msg.className = 'msg ok'; msg.textContent = '¡Guardado!';
     btn.disabled = false; btn.textContent = 'Guardar';
     setTimeout(function(){ location.href = 'app.html'; }, 900);
-  }).catch(function(){
-    msg.className = 'msg err'; msg.textContent = 'No se pudo guardar.';
+  }).catch(function(e){
+    msg.className = 'msg err';
+    msg.textContent = 'No se pudo guardar: ' + (e && e.message ? e.message : 'error de conexión');
     btn.disabled = false; btn.textContent = 'Guardar';
   });
 };
