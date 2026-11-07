@@ -724,22 +724,21 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
 .epub-toc-title {
   margin: 0 0 8px; font-family: Georgia, "Times New Roman", serif;
   font-size: 15px; font-weight: 700; color: #fff;
-  /* r33: halo azul NÍTIDO — capas cerradas: demarcación de 1 px
-     en 8 direcciones + resplandor corto (máx. 6 px, tenue).
-     Fuera el desenfoque grande de r26 (10 px) que se veía
-     como una nube borrosa alrededor de las letras. */
+  /* r34 (pedido de Sergio): SIN halo ni resplandor — solo el
+     CONTORNO (demarcación) de 1 px en azul oscuro #1e3a8a, el
+     azul de los botones del lector, alrededor de las letras
+     blancas. Todas las capas llevan desenfoque CERO: fuera
+     del contorno no queda brillo alguno. Sustituye al halo de
+     r33, que Sergio seguía viendo como resplandor. */
   text-shadow:
-    0 0 1px rgba(59, 130, 246, 1),
-    1px 0 0 rgba(59, 130, 246, 0.95),
-    -1px 0 0 rgba(59, 130, 246, 0.95),
-    0 1px 0 rgba(59, 130, 246, 0.95),
-    0 -1px 0 rgba(59, 130, 246, 0.95),
-    1px 1px 0 rgba(59, 130, 246, 0.8),
-    -1px 1px 0 rgba(59, 130, 246, 0.8),
-    1px -1px 0 rgba(59, 130, 246, 0.8),
-    -1px -1px 0 rgba(59, 130, 246, 0.8),
-    0 0 3px rgba(59, 130, 246, 0.6),
-    0 0 6px rgba(59, 130, 246, 0.28);
+    1px 0 0 #1e3a8a,
+    -1px 0 0 #1e3a8a,
+    0 1px 0 #1e3a8a,
+    0 -1px 0 #1e3a8a,
+    1px 1px 0 #1e3a8a,
+    -1px 1px 0 #1e3a8a,
+    1px -1px 0 #1e3a8a,
+    -1px -1px 0 #1e3a8a;
 }
 
 /* Paneles desde arriba (r19): índice y buscador caen anclados
@@ -994,22 +993,21 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
      ~15 px, negrita, sin pastilla ni fondo. */
   margin: 0 0 6px; font-family: Georgia, "Times New Roman", serif;
   font-size: 15px; font-weight: 700; color: #fff;
-  /* r33: halo azul NÍTIDO — capas cerradas: demarcación de 1 px
-     en 8 direcciones + resplandor corto (máx. 6 px, tenue).
-     Fuera el desenfoque grande de r26 (10 px) que se veía
-     como una nube borrosa alrededor de las letras. */
+  /* r34 (pedido de Sergio): SIN halo ni resplandor — solo el
+     CONTORNO (demarcación) de 1 px en azul oscuro #1e3a8a, el
+     azul de los botones del lector, alrededor de las letras
+     blancas. Todas las capas llevan desenfoque CERO: fuera
+     del contorno no queda brillo alguno. Sustituye al halo de
+     r33, que Sergio seguía viendo como resplandor. */
   text-shadow:
-    0 0 1px rgba(59, 130, 246, 1),
-    1px 0 0 rgba(59, 130, 246, 0.95),
-    -1px 0 0 rgba(59, 130, 246, 0.95),
-    0 1px 0 rgba(59, 130, 246, 0.95),
-    0 -1px 0 rgba(59, 130, 246, 0.95),
-    1px 1px 0 rgba(59, 130, 246, 0.8),
-    -1px 1px 0 rgba(59, 130, 246, 0.8),
-    1px -1px 0 rgba(59, 130, 246, 0.8),
-    -1px -1px 0 rgba(59, 130, 246, 0.8),
-    0 0 3px rgba(59, 130, 246, 0.6),
-    0 0 6px rgba(59, 130, 246, 0.28);
+    1px 0 0 #1e3a8a,
+    -1px 0 0 #1e3a8a,
+    0 1px 0 #1e3a8a,
+    0 -1px 0 #1e3a8a,
+    1px 1px 0 #1e3a8a,
+    -1px 1px 0 #1e3a8a,
+    1px -1px 0 #1e3a8a,
+    -1px -1px 0 #1e3a8a;
 }
 
 .epub-recolor .epub-palette-title { margin-top: 10px; }
@@ -1112,22 +1110,21 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
      (Georgia) distinta al sans de la interfaz, ~15 px y negrita. */
   margin: 0 0 6px; font-family: Georgia, "Times New Roman", serif;
   font-size: 15px; font-weight: 700; color: #fff;
-  /* r33: halo azul NÍTIDO — capas cerradas: demarcación de 1 px
-     en 8 direcciones + resplandor corto (máx. 6 px, tenue).
-     Fuera el desenfoque grande de r26 (10 px) que se veía
-     como una nube borrosa alrededor de las letras. */
+  /* r34 (pedido de Sergio): SIN halo ni resplandor — solo el
+     CONTORNO (demarcación) de 1 px en azul oscuro #1e3a8a, el
+     azul de los botones del lector, alrededor de las letras
+     blancas. Todas las capas llevan desenfoque CERO: fuera
+     del contorno no queda brillo alguno. Sustituye al halo de
+     r33, que Sergio seguía viendo como resplandor. */
   text-shadow:
-    0 0 1px rgba(59, 130, 246, 1),
-    1px 0 0 rgba(59, 130, 246, 0.95),
-    -1px 0 0 rgba(59, 130, 246, 0.95),
-    0 1px 0 rgba(59, 130, 246, 0.95),
-    0 -1px 0 rgba(59, 130, 246, 0.95),
-    1px 1px 0 rgba(59, 130, 246, 0.8),
-    -1px 1px 0 rgba(59, 130, 246, 0.8),
-    1px -1px 0 rgba(59, 130, 246, 0.8),
-    -1px -1px 0 rgba(59, 130, 246, 0.8),
-    0 0 3px rgba(59, 130, 246, 0.6),
-    0 0 6px rgba(59, 130, 246, 0.28);
+    1px 0 0 #1e3a8a,
+    -1px 0 0 #1e3a8a,
+    0 1px 0 #1e3a8a,
+    0 -1px 0 #1e3a8a,
+    1px 1px 0 #1e3a8a,
+    -1px 1px 0 #1e3a8a,
+    1px -1px 0 #1e3a8a,
+    -1px -1px 0 #1e3a8a;
 }
 
 /* Selector de diccionario de traducción (r19) y rótulo de la

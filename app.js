@@ -1629,7 +1629,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r33";
+const EPUB_BUILD = "r34";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -3144,24 +3144,32 @@ function epubCurlCornerFrame() {
   if (!C) return;
   const W = C.W, H = C.H;
   const K = { x: C.kx, y: C.ky };
-  const F = {
-    x: Math.max(-90, Math.min(W + 90, C.fx)),
-    y: Math.max(-90, Math.min(H + 90, C.fy)),
-  };
-  /* Anti-voltereta (r30): la punta nunca cruza al otro lado de
-     su esquina ancla — si el dedo rodea y vuelve más allá de la
-     esquina, el reflejo se quedaba del otro lado y la hoja daba
-     una voltereta sobre sí misma (reporte de Sergio). */
-  if (C.dir > 0) F.x = Math.min(F.x, K.x + 24);
-  else F.x = Math.max(F.x, K.x - 24);
-  /* Cono diagonal de ~45° (r21): lo vertical queda amarrado a lo
-     horizontal; un arrastre con dominante vertical apenas asoma
-     la esquina en diagonal y al soltar la página queda como
-     estaba (el avance útil se mide desde este punto efectivo). */
-  const dxT = C.dir > 0 ? K.x - F.x : F.x - K.x;
-  const maxDy = Math.max(0, dxT);
-  if (F.y > K.y + maxDy) F.y = K.y + maxDy;
-  else if (F.y < K.y - maxDy) F.y = K.y - maxDy;
+  /* r34: durante el asentamiento de una vuelta COMETIDA
+     (C.animFull) los topes del dedo NO se aplican — la hoja
+     debe poder salir ENTERA de la página (recorrido completo).
+     Con el dedo apoyado mandan todos, como siempre. */
+  const F = C.animFull
+    ? { x: C.fx, y: C.fy }
+    : {
+      x: Math.max(-90, Math.min(W + 90, C.fx)),
+      y: Math.max(-90, Math.min(H + 90, C.fy)),
+    };
+  if (!C.animFull) {
+    /* Anti-voltereta (r30): la punta nunca cruza al otro lado de
+       su esquina ancla — si el dedo rodea y vuelve más allá de la
+       esquina, el reflejo se quedaba del otro lado y la hoja daba
+       una voltereta sobre sí misma (reporte de Sergio). */
+    if (C.dir > 0) F.x = Math.min(F.x, K.x + 24);
+    else F.x = Math.max(F.x, K.x - 24);
+    /* Cono diagonal de ~45° (r21): lo vertical queda amarrado a lo
+       horizontal; un arrastre con dominante vertical apenas asoma
+       la esquina en diagonal y al soltar la página queda como
+       estaba (el avance útil se mide desde este punto efectivo). */
+    const dxT = C.dir > 0 ? K.x - F.x : F.x - K.x;
+    const maxDy = Math.max(0, dxT);
+    if (F.y > K.y + maxDy) F.y = K.y + maxDy;
+    else if (F.y < K.y - maxDy) F.y = K.y - maxDy;
+  }
   epubCurlFoldFrame(K, F);
 }
 
@@ -3199,14 +3207,18 @@ function epubCurlEdgeFrame() {
   if (!C) return;
   const K = { x: C.kx, y: C.ky };
   const F = { x: C.fx, y: C.fy };
-  if (C.dir > 0) F.x = Math.min(F.x, K.x + 24);
-  else F.x = Math.max(F.x, K.x - 24);
-  F.x = Math.max(-90, Math.min(C.W + 90, F.x));
-  F.y = Math.max(-90, Math.min(C.H + 90, F.y));
-  const run = Math.abs(F.x - K.x);
-  const maxDy = run * Math.tan(EPUB_EDGE_TILT_MAX * Math.PI / 180);
-  if (F.y > K.y + maxDy) F.y = K.y + maxDy;
-  else if (F.y < K.y - maxDy) F.y = K.y - maxDy;
+  /* r34: con la vuelta cometida (C.animFull), sin topes — la
+     hoja recorre la página entera y sale por completo. */
+  if (!C.animFull) {
+    if (C.dir > 0) F.x = Math.min(F.x, K.x + 24);
+    else F.x = Math.max(F.x, K.x - 24);
+    F.x = Math.max(-90, Math.min(C.W + 90, F.x));
+    F.y = Math.max(-90, Math.min(C.H + 90, F.y));
+    const run = Math.abs(F.x - K.x);
+    const maxDy = run * Math.tan(EPUB_EDGE_TILT_MAX * Math.PI / 180);
+    if (F.y > K.y + maxDy) F.y = K.y + maxDy;
+    else if (F.y < K.y - maxDy) F.y = K.y - maxDy;
+  }
   epubCurlFoldFrame(K, F);
 }
 
@@ -3330,19 +3342,55 @@ function epubCurlAnimate(complete) {
   }
   const fromX = C.fx, fromY = C.fy;
   let toX, toY;
+  let DUR = EPUB_CURL_RELEASE_MS;
   if (complete) {
-    if (C.mode === "edge") {
-      /* La hoja de borde barre la página ENTERA (r21): su borde
-         libre cruza todo el ancho y sale por el lado contrario,
-         como la página larga que es — con la geometría de
-         pliegue vertical, quedarse a mitad de pantalla dejaría
-         media hoja visible al asentar. */
-      toX = C.dir > 0 ? -(C.W + 90) : 2 * C.W + 90;
-      toY = fromY;
-    } else {
-      toX = C.dir > 0 ? -80 : C.W + 80;
-      toY = C.mode === "corner" ? C.H / 2 : fromY;
+    /* r34 RECORRIDO COMPLETO (pedido expreso de Sergio):
+       «quiero que la animación al cambiar de página termine su
+       recorrido, que no se quite de pronto, sino que recorra
+       toda la página completamente». La hoja sale en la
+       dirección del pase — desde el punto agarrado K hacia el
+       punto de suelta y más allá — hasta que la LÍNEA DE DOBLEZ
+       ha pasado ENTERA más allá de la esquina más lejana de la
+       página, con margen: en ese instante la parte plana ya es
+       cero y la solapa reflejada queda TODA fuera del área, y
+       recién entonces el asentamiento retira la capa. Antes el
+       pase de esquina apuntaba a un punto a 80 px del borde
+       (con la hoja aún sobre media página al retirar la capa:
+       el «se quita de pronto») y el de borde a −(W+90) sin
+       garantía geométrica. La salida es dominada por lo
+       horizontal: jamás una voltereta vertical al asentar.
+       Durante esta animación manda C.animFull: los topes del
+       dedo (cono de 45°, inclinación de 15°, caja ±90,
+       anti-cruce) NO se aplican — son reglas del arrastre; la
+       hoja cometida sí puede y debe voltearse entera. */
+    C.animFull = true;
+    const K = { x: C.kx, y: C.ky };
+    let ux = fromX - K.x, uy = fromY - K.y;
+    const dl = Math.hypot(ux, uy);
+    if (dl < 6) { ux = C.dir > 0 ? -1 : 1; uy = 0; }
+    else { ux /= dl; uy /= dl; }
+    if (C.dir > 0 && ux > -0.5) { ux = -1; uy = Math.max(-0.6, Math.min(0.6, uy)); const n = Math.hypot(ux, uy); ux /= n; uy /= n; }
+    if (C.dir < 0 && ux < 0.5) { ux = 1; uy = Math.max(-0.6, Math.min(0.6, uy)); const n = Math.hypot(ux, uy); ux /= n; uy /= n; }
+    /* E = proyección más lejana de las esquinas de la página
+       sobre la dirección de salida, medida desde K: la línea
+       de doblez (a mitad de camino entre K y el punto móvil)
+       debe superarla con margen para que nada de la hoja —
+       ni lo plano ni la solapa reflejada — quede sobre la
+       página al final del recorrido. */
+    let E = 0;
+    for (const P of [{ x: 0, y: 0 }, { x: C.W, y: 0 }, { x: C.W, y: C.H }, { x: 0, y: C.H }]) {
+      const s = (P.x - K.x) * ux + (P.y - K.y) * uy;
+      if (s > E) E = s;
     }
+    const distTotal = 2 * (E + 24);
+    toX = K.x + ux * distTotal;
+    toY = K.y + uy * distTotal;
+    /* Duración: la familia lenta aprobada (336 ms) para el
+       recorrido de siempre; si la trayectoria es más larga
+       (esquina o centro en diagonal), crece en proporción a
+       la distancia, con tope. La curva easeOutQuad no cambia. */
+    const travel = Math.hypot(toX - fromX, toY - fromY);
+    DUR = Math.max(EPUB_CURL_RELEASE_MS, Math.min(560, Math.round(EPUB_CURL_RELEASE_MS * travel / (C.W + 240))));
   } else if (C.mode === "corner") {
     toX = C.kx; toY = C.ky;
   } else {
@@ -3350,7 +3398,6 @@ function epubCurlAnimate(complete) {
     toY = fromY;
   }
   const t0 = performance.now();
-  const DUR = EPUB_CURL_RELEASE_MS;
   const stepFn = (t) => {
     if (epubCurl !== C) return;
     const k = Math.min(1, (t - t0) / DUR);
@@ -3375,6 +3422,7 @@ function epubCurlSettle(complete) {
   const C = epubCurl;
   epubCurl = null;
   if (!C) return;
+  const rend = epubRendition;
   const finish = () => {
     const layer = document.getElementById("epub-curl");
     if (layer) layer.hidden = true;
@@ -3387,28 +3435,66 @@ function epubCurlSettle(complete) {
     const holder = document.getElementById("epub-curl-strips");
     if (holder) holder.style.visibility = "";
     const flatWrap = document.getElementById("epub-curl-flat");
-    if (flatWrap) flatWrap.style.clipPath = "";
+    if (flatWrap) { flatWrap.style.clipPath = ""; flatWrap.style.visibility = ""; }
     epubCurlBusy = false;
     if (complete) epubCurlPoolSchedule();
   };
-  if (!complete || !epubRendition) { finish(); return; }
-  /* r33 FLUIDEZ: la navegación se disparó al EMPEZAR el
-     asentamiento (epubCurlAnimate) y para cuando la hoja
-     termina de salir ya suele estar colocada: aquí solo se
-     espera su promesa, sin esperas añadidas (fuera el
-     setTimeout de 40 ms que dejaba un fotograma congelado al
-     final). La red de 700 ms queda solo para una navegación
-     patológicamente lenta. Si la promesa no existiera (vía
-     defensiva), se dispara la navegación aquí una sola vez. */
+  if (!complete || !rend) { finish(); return; }
+  /* r34 PRECARGA (pedido de Sergio: «tener precargadas la
+     página anterior y la siguiente para que no dé el salto»):
+     la página destino lleva en pantalla desde que empezó el
+     gesto — es el clon precargado del pool, la página vecina
+     ya renderizada, visible debajo de la hoja todo el
+     recorrido. Si la navegación de la rendition viva aún no
+     ha terminado (con libros reales y pesados el render puede
+     tardar mucho más que el asentamiento: en la medición con
+     el Quijote real, la r33 destapaba el visor con la página
+     vieja y el cambio caía hasta ~1,4 s después), el visor NO
+     se destapa: la hoja ya salió del todo (recorrido completo)
+     y lo que queda visible es la página destino precargada,
+     como una página ya puesta. Cuando la navegación confirma
+     y pinta un fotograma, la página precargada y la viva se
+     intercambian en el mismo instante — son el mismo
+     documento — y el lector no ve ningún salto. Fuera el tope
+     de 700 ms de r33, que era el que destapaba antes de
+     tiempo; la red de 4 s es solo anti-atrapamiento para una
+     navegación patológica. El candado (epubCurlBusy) sigue
+     puesto durante la espera: ningún gesto entra sobre una
+     página aún no viva, y la reconstrucción del pool espera
+     también (epubCurlPoolBuild lo respeta). */
+  const key = C.dir > 0 ? "next" : "prev";
+  const coverEl = (typeof epubCurlRevEls !== "undefined" && epubCurlRevEls) ? epubCurlRevEls[key] : null;
   let done = false;
   const once = () => { if (!done) { done = true; finish(); } };
+  if (coverEl) {
+    /* Se retira todo lo de la hoja (la solapa, la parte plana,
+       las franjas y la sombra proyectada) y queda SOLO la
+       página destino precargada cubriendo el área del libro. */
+    const flap = document.getElementById("epub-curl-flap");
+    if (flap) flap.hidden = true;
+    const flatWrap = document.getElementById("epub-curl-flat");
+    if (flatWrap) flatWrap.style.visibility = "hidden";
+    const cast = document.getElementById("epub-curl-cast");
+    if (cast) cast.style.display = "none";
+    const holder = document.getElementById("epub-curl-strips");
+    if (holder) holder.style.visibility = "hidden";
+    coverEl.style.display = "";
+  }
+  const swap = () => {
+    /* Si la sesión cambió durante la espera (libro cerrado o
+       reabierto), destroyEpubReader ya lo dejó todo limpio:
+       no se toca nada. */
+    if (epubRendition !== rend || !epubOpen) { done = true; return; }
+    once();
+  };
+  const painted = () => { requestAnimationFrame(() => requestAnimationFrame(swap)); };
   try {
     let pr = C.navPr;
-    if (!C.navStarted) pr = C.dir > 0 ? epubRendition.next() : epubRendition.prev();
-    if (pr && pr.then) pr.then(once, once);
-    else { once(); return; }
-    setTimeout(once, 700);
-  } catch { once(); }
+    if (!C.navStarted) pr = C.dir > 0 ? rend.next() : rend.prev();
+    if (pr && pr.then) pr.then(painted, swap);
+    else { painted(); return; }
+    setTimeout(swap, 4000);
+  } catch { swap(); }
 }
 
 /* ------------------------------------------------- arranque */
