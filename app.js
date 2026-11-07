@@ -558,7 +558,11 @@ function render() {
   if (backBtn) backBtn.hidden = onHome || inReader || inChat;
 
   const fab = document.getElementById("help-fab");
-  if (fab) fab.hidden = !(revealed && view.name === "home");
+  // El flotante «Ayuda» SOLO vive en la página de inicio y en el
+  // formulario de inicio de sesión (vista de cuenta sin sesión);
+  // fuera de Explorar, categorías, fichas, lector, biblioteca y
+  // cuenta con sesión (regla de Sergio).
+  if (fab) fab.hidden = !(revealed && (view.name === "home" || (view.name === "account" && !token)));
 
   mainEl.className = view.name === "home" || inChat ? "" : "wrap";
   let html = "";
