@@ -1629,7 +1629,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r32";
+const EPUB_BUILD = "r33";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -3287,7 +3287,19 @@ function epubCurlRelease(adv, dur, velDir) {
      umbral — un recorrido corto y lento debe volver aunque el
      dedo siga a la izquierda del centro — : manda el RECORRIDO
      desde el nacimiento, o el flick, como en los demás pases. */
-  const complete = C.mid
+  /* r33 CANCELACIÓN PURA (estructural): devolver la hoja a su
+     posición inicial NUNCA comete la vuelta. Con un avance neto
+     menor que el mínimo de flick (24 px) ninguna cláusula puede
+     cometer — antes, la cláusula de posición de la punta
+     (xi < W*0.5) podía en teoría disparar sola con el avance
+     neto en ~cero según cómo hubiera nacido el gesto, y la
+     pureza de la cancelación dependía del signo de una
+     velocidad muestreada en ventana. Ninguna vuelta legítima
+     tiene avance neto < 24 px: el flick exige 24, el pase de
+     centro 0.36·W, y cruzar la punta a la otra mitad implica
+     un recorrido del dedo muy superior a 24 px. */
+  const complete = adv < 24 ? false
+    : C.mid
     ? adv >= C.W * 0.36 || (adv >= 24 && vel >= 0.45)
     : C.xi < C.W * 0.5 || (adv >= 24 && vel >= 0.45) || (C.xi < C.W * 0.74 && vel >= 0.5);
   epubCurlAnimate(complete);
@@ -3297,6 +3309,25 @@ function epubCurlAnimate(complete) {
   const C = epubCurl;
   if (!C || C.anim) return;
   C.anim = true;
+  /* r33 FLUIDEZ: si la vuelta se comete, la navegación de
+     epub.js se dispara AHORA, al empezar el asentamiento — la
+     página destino se coloca en el visor (oculto tras la hoja)
+     MIENTRAS la hoja termina de salir. Antes se esperaba al
+     final de la animación y el cambio caía de golpe tras un
+     fotograma congelado de ~90 ms («se queda pegada un
+     momentito y de pronto cambia de página»). La promesa queda
+     en C.navPr y epubCurlSettle solo la recoge: al asentar ya
+     no hay ningún cambio de página pendiente. */
+  C.navStarted = false;
+  C.navPr = null;
+  if (complete && epubRendition) {
+    C.navStarted = true;
+    try {
+      const pr = C.dir > 0 ? epubRendition.next() : epubRendition.prev();
+      C.navPr = pr && pr.then ? pr : null;
+      if (C.navPr) C.navPr.catch(() => { /* el error lo recoge settle */ });
+    } catch { C.navPr = null; }
+  }
   const fromX = C.fx, fromY = C.fy;
   let toX, toY;
   if (complete) {
@@ -3323,7 +3354,14 @@ function epubCurlAnimate(complete) {
   const stepFn = (t) => {
     if (epubCurl !== C) return;
     const k = Math.min(1, (t - t0) / DUR);
-    const e = 1 - Math.pow(1 - k, 3);
+    /* r33 CURVAS: al cometer, easeOutQuad — velocidad que baja
+       lineal hasta cero: la hoja desaparece en movimiento
+       continuo, sin la cola casi inmóvil del cúbico. Al
+       cancelar, easeOutQuart — aterrizaje largo y amortiguado:
+       la hoja CAE de nuevo en su sitio y se posa suave, sin
+       chasquido final. La duración (EPUB_CURL_RELEASE_MS) no
+       cambia. */
+    const e = complete ? 1 - (1 - k) * (1 - k) : 1 - Math.pow(1 - k, 4);
     C.fx = fromX + (toX - fromX) * e;
     C.fy = fromY + (toY - fromY) * e;
     epubCurlFrame();
@@ -3354,11 +3392,21 @@ function epubCurlSettle(complete) {
     if (complete) epubCurlPoolSchedule();
   };
   if (!complete || !epubRendition) { finish(); return; }
+  /* r33 FLUIDEZ: la navegación se disparó al EMPEZAR el
+     asentamiento (epubCurlAnimate) y para cuando la hoja
+     termina de salir ya suele estar colocada: aquí solo se
+     espera su promesa, sin esperas añadidas (fuera el
+     setTimeout de 40 ms que dejaba un fotograma congelado al
+     final). La red de 700 ms queda solo para una navegación
+     patológicamente lenta. Si la promesa no existiera (vía
+     defensiva), se dispara la navegación aquí una sola vez. */
   let done = false;
   const once = () => { if (!done) { done = true; finish(); } };
   try {
-    const pr = C.dir > 0 ? epubRendition.next() : epubRendition.prev();
-    if (pr && pr.then) pr.then(() => setTimeout(once, 40), () => setTimeout(once, 40));
+    let pr = C.navPr;
+    if (!C.navStarted) pr = C.dir > 0 ? epubRendition.next() : epubRendition.prev();
+    if (pr && pr.then) pr.then(once, once);
+    else { once(); return; }
     setTimeout(once, 700);
   } catch { once(); }
 }
@@ -3622,6 +3670,45 @@ function epubTopBackdropSync() {
   bd.hidden = !((toc && !toc.hidden) || (sea && !sea.hidden) || (men && !men.hidden));
 }
 
+/* Blindaje del CONTENIDO de las hojas (r33, pedido de Sergio):
+   arrastrar dentro de un panel SOLO desplaza su contenido —
+   nunca lo estira, lo colapsa ni lo cierra; eso queda solo
+   para el ASA (la pestaña/línea del panel) y para la ×. En el
+   código el cambio de altura ya colgaba solo del asa, pero en
+   iOS el gesto que el scroll interno no puede absorber (contenido
+   corto, o tirar más allá del borde) se encadenaba fuera y el
+   panel «se abría y se cerraba» al arrastrar su contenido. Este
+   blindaje traga ese gesto sobrante: si el toque no nació en el
+   asa y el scroll interno no puede consumir el movimiento, se
+   anula el arrastre; el scroll normal queda intacto. */
+function epubSheetShield(panel, scroller) {
+  if (!panel || panel.__mgShield) return;
+  panel.__mgShield = true;
+  let startY = null;
+  panel.addEventListener("touchstart", (e) => {
+    startY = e.touches && e.touches[0] ? e.touches[0].clientY : null;
+  }, { passive: true });
+  panel.addEventListener("touchmove", (e) => {
+    if (!e.cancelable || !e.touches || !e.touches[0] || startY === null) return;
+    const t = e.target;
+    if (!t) return;
+    /* Campos de formulario: su propio gesto (escribir, seleccionar
+       texto en el buscador) no se toca. */
+    if (t.closest && t.closest("input, textarea, select")) return;
+    /* El asa manda: su manejador decide alturas. */
+    if (t.closest && (t.closest("[data-topgrip]") || t.closest(".epub-ws-handle"))) return;
+    const dy = e.touches[0].clientY - startY;
+    if (Math.abs(dy) < 7) return;
+    const sc = scroller && t && scroller.contains(t) ? scroller : null;
+    if (!sc) { e.preventDefault(); return; }
+    const atTop = sc.scrollTop <= 0;
+    const atBottom = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 1;
+    if (sc.scrollHeight <= sc.clientHeight || (atTop && dy > 0) || (atBottom && dy < 0)) e.preventDefault();
+  }, { passive: false });
+  panel.addEventListener("touchend", () => { startY = null; });
+  panel.addEventListener("touchcancel", () => { startY = null; });
+}
+
 function epubTopAttach() {
   const bd = document.getElementById("epub-top-backdrop");
   if (bd && !bd.__mgTopHook) {
@@ -3669,6 +3756,14 @@ function epubTopAttach() {
       window.addEventListener("mouseup", up);
     });
   });
+  /* r33: blindaje de contenido en todas las hojas del lector —
+     el arrastre dentro solo hace scroll (ver epubSheetShield). */
+  for (const pid of ["epub-toc", "epub-search", "epub-menu", "epub-notes", "epub-dict", "epub-selmenu", "epub-noteview", "epub-noteed"]) {
+    const p = document.getElementById(pid);
+    if (!p) continue;
+    const sc = pid === "epub-notes" ? document.getElementById("epub-notes-list") : p.querySelector(".epub-topsheet-scroll");
+    epubSheetShield(p, sc);
+  }
   const inp = document.getElementById("epub-search-input");
   if (inp && !inp.__mgSearchHook) {
     inp.__mgSearchHook = true;
@@ -4709,6 +4804,9 @@ function epubWsAttach() {
   const hd = document.getElementById("epub-ws-handle");
   if (!sh || !hd || hd.__mgWsHook) return;
   hd.__mgWsHook = true;
+  /* r33: el contenido de la hoja solo hace scroll; estirar,
+     colapsar y cerrar quedan solo para el asa y la ×. */
+  epubSheetShield(sh, document.getElementById("epub-ws-scroll"));
   let drag = null;
   const start = (y) => {
     const st = epubStageEl();
