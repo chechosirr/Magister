@@ -474,3 +474,13 @@ h1.view-title.center { text-align: center; }
   color: var(--brass, #a07d2c); font-size: 14px; font-weight: 600;
   text-decoration: underline; cursor: pointer;
 }
+
+/* «Mis chats»: registro de conversaciones del cliente */
+.chatsview { padding-top: 26px; }
+.chats-title { font-size: 24px; margin: 0 0 6px; }
+.chats-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.chats-item { display: block; width: 100%; text-align: left; background: var(--card, #14151a); border: 1px solid rgba(140, 140, 160, 0.28); border-radius: 14px; padding: 12px 14px; cursor: pointer; font: inherit; color: inherit; }
+.chats-d { font-size: 12px; opacity: 0.65; }
+.chats-tag { font-size: 10.5px; font-weight: 800; border-radius: 999px; padding: 1px 8px; margin-left: 8px; background: rgba(140, 140, 160, 0.25); }
+.chats-tag.on { background: #9fd6a4; color: #12250f; }
+.chats-p { display: block; font-size: 14.5px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

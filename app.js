@@ -124,6 +124,18 @@ let libOnlyFavorites = false;
 let authNotice = false;        // aviso de «servicio en activación» tras intentar entrar en modo muestra
 let authError = "";
 let authBusy = false;
+/* Sesión y botón «atrás» (corrección 2026-11-07): si el navegador restaura
+   la app desde su caché tras cerrarse la sesión en otro lado, la vista
+   restaurada seguiría «con sesión». Al volver a mostrarse se compara el
+   token actual con el de la carga; si cambió, se recarga la app. */
+let sessStamp = null;
+window.addEventListener("pageshow", (e) => {
+  const cur = loadToken() || "";
+  if (!e.persisted) { sessStamp = cur; return; }
+  if (sessStamp === null) { sessStamp = cur; return; }
+  if (cur !== sessStamp) location.reload();
+});
+
 let detailData = null;         // ficha cargada desde el servicio (con sesión)
 let detailState = "idle";      // idle | loading | error
 let detailError = "";
@@ -536,7 +548,7 @@ function buildShell() {
 
 function render() {
   const inReader = view.name === "reader";
-  const inChat = view.name === "chat";
+  const inChat = view.name === "chat" || view.name === "chathist";
   headerEl.classList.toggle("hidden", inReader || inChat);
   headerEl.classList.toggle("absolute", view.name === "home" && !inReader);
   headerEl.classList.toggle("sticky", view.name !== "home" && !inReader && !inChat);
@@ -575,7 +587,9 @@ function render() {
   else if (view.name === "account") html = accountHtml();
   else if (view.name === "admin-home") html = adminHomeHtml();
   else if (view.name === "chat") html = chatViewHtml();
-  if (view.name !== "home" && view.name !== "chat" && view.name !== "admin-home") {
+  else if (view.name === "chats") html = chatsViewHtml();
+  else if (view.name === "chathist") html = chatHistHtml();
+  if (view.name !== "home" && view.name !== "chat" && view.name !== "chathist" && view.name !== "admin-home") {
     html += `<footer class="site-footer"><p>Catálogo en preparación: los libros se servirán desde el servidor propio de Magister. Las portadas se muestran como muestra visual del catálogo mientras se carga el contenido.</p></footer>`;
   }
   mainEl.innerHTML = html;
@@ -611,6 +625,7 @@ function menuHtml() {
     items.push(tab("categories", "Explorar"));
     items.push(tab("library", "Mi biblioteca"));
     items.push(`<button type="button" class="mi" data-action="open-chat">Pídenos tu libro</button>`);
+    items.push(`<button type="button" class="mi" data-action="open-chats">Mis chats</button>`);
     items.push(tab("account", "Mi cuenta"));
   }
   if (token) items.push(`<button type="button" class="mi logout" data-action="logout">Cerrar sesión</button>`);
@@ -793,6 +808,17 @@ function chatSave(key, val) { try { if (val) window.localStorage.setItem(key, va
 
 let chatIntent = "libro";        // "libro" | "ayuda": última entrada usada
 let chatAnonConv = chatLoad(CHAT_CONV_KEY);
+/* Registro local de conversaciones anónimas de ESTE dispositivo
+   («Mis chats»): cada conversación usada queda anotada; las
+   finalizadas siguen en la lista para poder releerlas. */
+const CHAT_CONVS_KEY = "magister-chat-convs";
+function chatAnonIds() { try { return JSON.parse(chatLoad(CHAT_CONVS_KEY) || "[]") || []; } catch { return []; } }
+function chatNoteAnonConv(id) {
+  if (!id) return;
+  const ids = chatAnonIds();
+  if (!ids.includes(id)) { ids.push(id); while (ids.length > 30) ids.shift(); chatSave(CHAT_CONVS_KEY, JSON.stringify(ids)); }
+}
+if (chatAnonConv) chatNoteAnonConv(chatAnonConv);
 let chatAnonStarted = !!chatLoad(CHAT_NAME_KEY);
 let chatAcctMsgs = [];           // mensajes de la conversación de la cuenta
 let chatAnonMsgs = [];           // mensajes de la conversación anónima
@@ -959,7 +985,7 @@ async function chatEnsureOpen() {
       await chatFetch("/open", { method: "POST", body: JSON.stringify({ intent: chatIntent }) });
     } else {
       const r = await chatFetch("/open", { method: "POST", body: JSON.stringify({ name: chatLoad(CHAT_NAME_KEY), contact: chatLoad(CHAT_CONTACT_KEY), intent: "ayuda" }) });
-      if (r && r.conv) { chatAnonConv = r.conv; chatSave(CHAT_CONV_KEY, chatAnonConv); }
+      if (r && r.conv) { chatAnonConv = r.conv; chatSave(CHAT_CONV_KEY, chatAnonConv); chatNoteAnonConv(chatAnonConv); }
     }
   } catch { /* sin red o sesión caída: el sondeo de abajo reintenta o expulsa */ }
   chatOpening = false;
@@ -986,6 +1012,90 @@ function openChat(intent) {
   chatIntent = intent;
   if (view.name !== "chat") chatReturn = { ...view };
   go({ name: "chat" });
+}
+
+/* -------------------------------- «Mis chats»: el registro del cliente
+   La entrada vive en el menú ☰. Con cuenta, el registro sale de
+   SU cuenta (la conversación activa y las finalizadas archivadas,
+   en solo lectura); sin cuenta, de las conversaciones de este
+   dispositivo. La activa abre el chat normal para seguir
+   escribiendo; cualquier otra se lee con /conv en solo lectura. */
+let chatHistList = null;   // null = cargando
+let chatHistView = null;   // { msgs, finalizada } del hilo en lectura
+
+function chatFecha(ts) {
+  try {
+    const d = new Date(ts * 1000);
+    return d.toLocaleDateString("es", { day: "numeric", month: "short" }) + " · " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch { return ""; }
+}
+
+function chatsViewHtml() {
+  let body;
+  if (chatHistList === null) body = `<p class="dim">Cargando…</p>`;
+  else if (!chatHistList.length) body = `<p class="dim">Todavía no tienes chats guardados.</p>`;
+  else body = chatHistList.map((it) => `<button type="button" class="chats-item" data-action="chats-open" data-conv="${esc(it.conv)}" data-fin="${it.finalizada ? "1" : "0"}" data-act="${it.activa && !it.finalizada ? "1" : "0"}">
+      <span class="chats-d">${esc(chatFecha(it.updated || it.created))}</span><span class="chats-tag${it.activa && !it.finalizada ? " on" : ""}">${it.finalizada ? "Finalizada" : (it.activa ? "Activa" : "Anterior")}</span>
+      <span class="chats-p">${esc((it.last_f === "v" ? "Tú: " : "") + (it.last || ""))}</span>
+    </button>`).join("");
+  return `<section class="chatsview">
+    <h2 class="chats-title">Mis chats</h2>
+    <p class="dim">Tu registro de conversaciones con Magister. La activa se puede seguir escribiendo; las finalizadas quedan en solo lectura.</p>
+    <div class="chats-list">${body}</div>
+  </section>`;
+}
+
+async function loadChatsList() {
+  chatHistList = null;
+  if (view.name === "chats") render();
+  try {
+    const j = token
+      ? await chatFetch("/myhistory")
+      : await chatFetch("/myhistory", { method: "POST", body: JSON.stringify({ ids: chatAnonIds() }) });
+    chatHistList = (j && j.chats) || [];
+  } catch { chatHistList = []; }
+  if (view.name === "chats") render();
+}
+
+function openChats() {
+  go({ name: "chats" });
+  loadChatsList();
+}
+
+async function openChatHist(conv, fin) {
+  chatHistView = null;
+  go({ name: "chathist" });
+  try {
+    const j = await chatFetch("/conv?conv=" + encodeURIComponent(conv));
+    chatHistView = { msgs: (j && j.messages) || [], finalizada: !!(j && j.finalizada) };
+  } catch { chatHistView = { msgs: [], finalizada: fin }; }
+  if (view.name === "chathist") render();
+}
+
+function chatHistHtml() {
+  if (!chatHistView) {
+    return `<div class="chatview"><div class="chatview-head">
+      <button type="button" class="chatview-back" data-action="chats-back" aria-label="Volver">←</button>
+      <div class="chatview-head-text"><p class="chatview-title">Magister</p><p class="chatview-sub">Solo lectura</p></div>
+    </div><p class="chat-empty" style="padding:26px 16px">Cargando la conversación…</p></div>`;
+  }
+  const msgs = chatHistView.msgs.map((m) => {
+    const mine = m.f === "v";
+    return `<div class="chat-msg ${mine ? "mine" : "theirs"}">
+      <div class="chat-bubble">${esc(m.t)}</div>
+      <p class="chat-meta">${mine ? "Tú" : "Magister"} · ${chatTime(m.ts)}</p>
+    </div>`;
+  }).join("");
+  return `<div class="chatview">
+    <div class="chatview-head">
+      <button type="button" class="chatview-back" data-action="chats-back" aria-label="Volver">←</button>
+      <div class="chatview-head-text">
+        <p class="chatview-title">Magister</p>
+        <p class="chatview-sub">${chatHistView.finalizada ? "Conversación finalizada" : "Conversación anterior"} · solo lectura</p>
+      </div>
+    </div>
+    <div class="chatview-msgs">${msgs || `<p class="chat-empty">Sin mensajes.</p>`}</div>
+  </div>`;
 }
 
 /* Pantalla de datos del visitante (igual que la de NEXO): solo pide
@@ -1018,6 +1128,7 @@ async function chatSendMessage(form) {
     if (chatMode() === "anon" && !chatAnonConv && r && r.conv) {
       chatAnonConv = r.conv;
       chatSave(CHAT_CONV_KEY, chatAnonConv);
+      chatNoteAnonConv(chatAnonConv);
     }
     input.value = "";
     input.style.height = "auto";
@@ -1102,6 +1213,12 @@ document.addEventListener("click", async (e) => {
   else if (action === "open-help") openChat("ayuda");
   else if (action === "admin-welcome-close") closeAdminWelcome();
   else if (action === "chat-back") go(chatReturn.name ? chatReturn : { name: "home" });
+  else if (action === "open-chats") openChats();
+  else if (action === "chats-open") {
+    if (el.dataset.act === "1") openChat(chatIntent);
+    else openChatHist(el.dataset.conv, el.dataset.fin === "1");
+  }
+  else if (action === "chats-back") go({ name: "chats" });
   else if (action === "chat-finalize") chatFinalize();
   else if (action === "chat-new") { chatResetForNew(); render(); chatStart(); }
   else if (action === "goto-home") { viewHistory = []; go({ name: "home" }, { replace: true }); }
