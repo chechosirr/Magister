@@ -128,6 +128,7 @@ let view = { name: "home" };   // home | library | categories | search | account
 let viewHistory = [];          // pila de vistas para la flecha de volver del header
 let catalogHidden = new Set(); // ids pausados/eliminados en el servicio (no se muestran al público)
 let libTab = "estante";        // sección de «Tu biblioteca»: "estante" | "favoritos" | "recientes"
+const libFilter = { estante: "", favoritos: "", recientes: "" }; // buscador propio de cada sección (r32): término por sección, vivo mientras se está en la vista
 let authNotice = false;        // aviso de «servicio en activación» tras intentar entrar en modo muestra
 let authError = "";
 let authBusy = false;
@@ -214,6 +215,20 @@ function searchBoxHtml({ dark = false, initial = "" } = {}) {
   </form>`;
 }
 
+/* Buscador propio de cada sección de «Tu biblioteca» (r32): mismo
+   aspecto que el de «Buscar libros», ajustado a la columna de
+   contenido. Filtra en vivo la lista de ESA sección (evento input)
+   y cada sección conserva su propio término mientras se está en
+   la vista; el envío del formulario no navega a ningún sitio. */
+function libSearchBoxHtml() {
+  const donde = { estante: "tu estante", favoritos: "tus favoritos", recientes: "tus recientes" }[libTab];
+  return `<form class="searchbox light" role="search" aria-label="Buscar en ${donde}" data-lib-search-form>
+    ${SEARCH_ICON}
+    <input type="search" data-lib-search-input aria-label="Buscar en ${donde} por título o autor" placeholder="Busca por título o autor…" value="${esc(libFilter[libTab])}">
+    <button type="submit">Buscar</button>
+  </form>`;
+}
+
 const LOCK_SVG = `<span class="lock-badge"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Suscripción</span>`;
 
 /* ------------------------------------------------------------ vistas */
@@ -231,18 +246,25 @@ function escaparateHtml() {
   </section>`;
 }
 
-function libraryHtml() {
-  const finishedCount = libraryEntries.filter((e) => e.finished).length;
-  let body;
+/* Lista de la sección activa de «Tu biblioteca», ya filtrada por el
+   término de SU buscador (r32). Sin término: los estados vacíos de
+   siempre; con término y cero coincidencias: «Sin resultados…». El
+   filtrado en vivo repinta SOLO este bloque para no perder el foco
+   del campo de búsqueda. */
+function libSectionBodyHtml() {
+  const q = (libFilter[libTab] || "").trim();
+  const sinResultados = `<p class="small dim" style="margin:0">Sin resultados para «${esc(q)}»</p>`;
   if (libTab === "recientes") {
-    const recs = recientesGet();
+    let recs = recientesGet();
+    if (q) recs = recs.filter((r) => { const b = BOOK_BY_ID.get(r.id); return !!b && bookMatches(b, q); });
     if (recs.length === 0) {
-      body = `<div class="card dashed">
+      if (q) return sinResultados;
+      return `<div class="card dashed">
       <p class="small dim" style="margin:0">Todavía no abres ningún libro en el lector. Cuando leas uno, aparecerá aquí para seguir donde ibas.</p>
       <button type="button" class="btn-primary pad mt-3" data-action="goto-categories">Explorar</button>
     </div>`;
-    } else {
-      body = `<div class="grid-books">${recs.map((r) => {
+    }
+    return `<div class="grid-books">${recs.map((r) => {
         const book = BOOK_BY_ID.get(r.id);
         let enCurso = false;
         try { enCurso = !!window.localStorage.getItem("magister-epub-pos-" + r.gid); } catch { enCurso = false; }
@@ -251,18 +273,19 @@ function libraryHtml() {
         <p class="lib-meta">${enCurso ? "En curso · " : ""}${esc(recientesFecha(r.ts))}</p>
       </div>`;
       }).join("")}</div>`;
-    }
-  } else {
-    const entries = libTab === "favoritos" ? libraryEntries.filter((e) => e.favorite) : libraryEntries;
-    if (entries.length === 0) {
-      body = `<div class="card dashed">
+  }
+  let entries = libTab === "favoritos" ? libraryEntries.filter((e) => e.favorite) : libraryEntries;
+  if (q) entries = entries.filter((e) => bookMatches(e.book, q));
+  if (entries.length === 0) {
+    if (q) return sinResultados;
+    return `<div class="card dashed">
       <p class="small dim" style="margin:0">${libTab === "favoritos"
         ? "Todavía no marcas ningún favorito. Toca la estrella en un libro de tu estante."
         : "Tu estante está vacío. Busca en las categorías y añade tu primer libro."}</p>
       <button type="button" class="btn-primary pad mt-3" data-action="goto-categories">Explorar</button>
     </div>`;
-    } else {
-      body = `<div class="grid-books">${entries.map((entry) => {
+  }
+  return `<div class="grid-books">${entries.map((entry) => {
       const book = entry.book;
       return `<div>
         ${bookCardHtml(book)}
@@ -272,9 +295,11 @@ function libraryHtml() {
           <button type="button" class="remove" data-action="lib-remove" data-id="${book.id}" aria-label="Quitar ${esc(book.title)} de tu biblioteca">Quitar</button>
         </div>
       </div>`;
-      }).join("")}</div>`;
-    }
-  }
+    }).join("")}</div>`;
+}
+
+function libraryHtml() {
+  const finishedCount = libraryEntries.filter((e) => e.finished).length;
   const tabCard = (t, label) => `<button type="button" class="lib-tabcard${libTab === t ? " active" : ""}" data-action="lib-tab" data-t="${t}" aria-pressed="${libTab === t ? "true" : "false"}">${label}</button>`;
   return `<div class="view-pad">
     <h1 class="view-title">Tu biblioteca</h1>
@@ -286,7 +311,10 @@ function libraryHtml() {
         ${tabCard("favoritos", "Favoritos")}
         ${tabCard("recientes", "Recientes")}
       </nav>
-      <div class="lib-content">${body}</div>
+      <div class="lib-content">
+        <div class="lib-search">${libSearchBoxHtml()}</div>
+        <div class="lib-list">${libSectionBodyHtml()}</div>
+      </div>
     </div>
   </div>`;
 }
@@ -1393,6 +1421,12 @@ document.addEventListener("click", async (e) => {
 
 document.addEventListener("submit", async (e) => {
   const form = e.target;
+  if (form.matches("[data-lib-search-form]")) {
+    // Buscador de sección de «Tu biblioteca» (r32): el filtrado es en
+    // vivo (evento input); el envío solo evita salir de la vista.
+    e.preventDefault();
+    return;
+  }
   if (form.matches("[data-search-form]")) {
     e.preventDefault();
     const input = form.querySelector("input[type=search]");
@@ -1426,6 +1460,17 @@ document.addEventListener("submit", async (e) => {
 document.addEventListener("change", (e) => {
   const sel = e.target.closest("[data-chapter-select]");
   if (sel) openChapter(view.bookId, Number(sel.value));
+});
+
+/* Buscadores de sección de «Tu biblioteca» (r32): al escribir se
+   guarda el término de ESA sección y se repinta solo su lista, para
+   que el campo no pierda el foco ni el cursor. */
+document.addEventListener("input", (e) => {
+  const inp = e.target.closest ? e.target.closest("[data-lib-search-input]") : null;
+  if (!inp) return;
+  libFilter[libTab] = inp.value;
+  const list = document.querySelector(".lib-list");
+  if (list) list.innerHTML = libSectionBodyHtml();
 });
 
 /* ------------------------------------------------------------ apertura */
@@ -1584,7 +1629,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r31";
+const EPUB_BUILD = "r32";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
