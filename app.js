@@ -131,17 +131,27 @@ let libTab = "estante";        // sección de «Tu biblioteca»: "estante" | "fa
 let authNotice = false;        // aviso de «servicio en activación» tras intentar entrar en modo muestra
 let authError = "";
 let authBusy = false;
-/* Sesión y botón «atrás» (corrección 2026-11-07): si el navegador restaura
-   la app desde su caché tras cerrarse la sesión en otro lado, la vista
-   restaurada seguiría «con sesión». Al volver a mostrarse se compara el
-   token actual con el de la carga; si cambió, se recarga la app. */
-let sessStamp = null;
+/* Sesión y botón «atrás» (corrección 2026-11-07, reforzada): si el
+   navegador restaura la app desde su caché tras cerrarse la sesión en
+   otro lado, la vista restaurada seguiría «con sesión». Tres capas:
+   (1) un «unload» vacío deja la app fuera de la caché atrás/adelante
+   de Safari/iOS, que al volver la recarga; (2) al volver a mostrarse
+   congelada (pageshow) se compara el token actual con el de la carga
+   y si cambió se recarga; (3) si la app vuelve a verse sin recargarse
+   (estaba abierta en segundo plano) y la sesión ya no existe, se
+   recarga. */
+let sessBorn = null;
+let sessShown = false;
 window.addEventListener("pageshow", (e) => {
   const cur = loadToken() || "";
-  if (!e.persisted) { sessStamp = cur; return; }
-  if (sessStamp === null) { sessStamp = cur; return; }
-  if (cur !== sessStamp) location.reload();
+  if ((e.persisted || sessShown) && sessBorn !== null && cur !== sessBorn) location.reload();
+  if (sessBorn === null) sessBorn = cur;
+  sessShown = true;
 });
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && sessBorn !== null && sessBorn !== "" && (loadToken() || "") === "") location.reload();
+});
+window.addEventListener("unload", () => {});
 
 let detailData = null;         // ficha cargada desde el servicio (con sesión)
 let detailState = "idle";      // idle | loading | error
