@@ -128,6 +128,7 @@ let view = { name: "home" };   // home | library | categories | search | account
 let viewHistory = [];          // pila de vistas para la flecha de volver del header
 let catalogHidden = new Set(); // ids pausados/eliminados en el servicio (no se muestran al público)
 let libOnlyFavorites = false;
+let libTab = "estante";        // pestaña de «Mi biblioteca»: "estante" | "recientes"
 let authNotice = false;        // aviso de «servicio en activación» tras intentar entrar en modo muestra
 let authError = "";
 let authBusy = false;
@@ -218,15 +219,32 @@ function escaparateHtml() {
       <p class="lede">Los grandes clásicos en español. Con tu cuenta lees una muestra gratuita de cada libro; con la suscripción, la biblioteca completa.</p>
       <div class="search-slot">${searchBoxHtml({ dark: true })}</div>
     </div>
-  </section>
-  ${epubSampleCardHtml("home")}`;
+  </section>`;
 }
 
 function libraryHtml() {
   const shown = libOnlyFavorites ? libraryEntries.filter((e) => e.favorite) : libraryEntries;
   const finishedCount = libraryEntries.filter((e) => e.finished).length;
   let body;
-  if (shown.length === 0) {
+  if (libTab === "recientes") {
+    const recs = recientesGet();
+    if (recs.length === 0) {
+      body = `<div class="card dashed mt-8" style="margin-top:32px">
+      <p class="small dim" style="margin:0">Todavía no abres ningún libro en el lector. Cuando leas uno, aparecerá aquí para seguir donde ibas.</p>
+      <button type="button" class="btn-primary pad mt-3" data-action="goto-categories">Explorar</button>
+    </div>`;
+    } else {
+      body = `<div class="grid-books mt-5" style="margin-top:20px">${recs.map((r) => {
+        const book = BOOK_BY_ID.get(r.id);
+        let enCurso = false;
+        try { enCurso = !!window.localStorage.getItem("magister-epub-pos-" + r.gid); } catch { enCurso = false; }
+        return `<div>
+        ${bookCardHtml(book)}
+        <p class="lib-meta">${enCurso ? "En curso · " : ""}${esc(recientesFecha(r.ts))}</p>
+      </div>`;
+      }).join("")}</div>`;
+    }
+  } else if (shown.length === 0) {
     body = `<div class="card dashed mt-8" style="margin-top:32px">
       <p class="small dim" style="margin:0">${libOnlyFavorites
         ? "Todavía no marcas ningún favorito. Toca la estrella en un libro de tu estante."
@@ -250,9 +268,13 @@ function libraryHtml() {
     <h1 class="view-title">Tu biblioteca</h1>
     <p class="small dim mt-1">${libraryEntries.length} ${libraryEntries.length === 1 ? "libro" : "libros"} en tu estante · ${finishedCount} terminados</p>
     <div class="chip-row">
+      <button type="button" class="chip${libTab === "estante" ? " active" : ""}" data-action="lib-tab" data-t="estante">Tu estante</button>
+      <button type="button" class="chip${libTab === "recientes" ? " active" : ""}" data-action="lib-tab" data-t="recientes">Recientes</button>
+    </div>
+    ${libTab === "estante" ? `<div class="chip-row">
       <button type="button" class="chip${!libOnlyFavorites ? " active" : ""}" data-action="lib-filter" data-f="all">Todos</button>
       <button type="button" class="chip${libOnlyFavorites ? " active" : ""}" data-action="lib-filter" data-f="fav">★ Favoritos</button>
-    </div>
+    </div>` : ""}
     ${body}
   </div>`;
 }
@@ -264,7 +286,6 @@ function categoriesHtml() {
     for (const b of visibleBooks()) if (byCat.has(b.category)) byCat.get(b.category).push(b);
     return `<div class="view-pad">
       <h1 class="view-title center">Categorías</h1>
-      ${epubSampleCardHtml("cats")}
       <div>${CATEGORIES.map((name) => {
         const list = byCat.get(name) || [];
         return `<section class="cat-block" aria-label="Categoría ${esc(name)}">
@@ -733,6 +754,17 @@ function go(next, opts) {
 function openBook(bookId) {
   if (!token) { go({ name: "account" }); return; }
   if (MAGISTER_API_ENABLED) apiCall("/chat/lectura", { method: "POST", body: { id: bookId } }).catch(() => {});
+  const book = BOOK_BY_ID.get(bookId);
+  if (book && book.epub) {
+    /* Libro con EPUB en la bodega: el lector se abre con ESTE
+       libro (el servicio de lectura aplica el modelo de acceso:
+       muestra del primer capítulo o libro completo). */
+    epubCurrent = { id: book.id, gid: book.gid, title: book.title, author: book.author, acceso: null };
+    recientesAdd(book);
+    epubEnsureLibrary(bookId);
+    go({ name: "epub" });
+    return;
+  }
   detailState = "loading"; detailData = null; detailError = "";
   go({ name: "detail", bookId });
   api.getBookDetail(token, bookId).then((d) => {
@@ -740,6 +772,51 @@ function openBook(bookId) {
   }).catch((e) => {
     detailState = "error"; detailError = errorText(e); if (view.name === "detail") render();
   });
+}
+
+/* Al abrir un libro en el lector queda también en «Tu biblioteca»
+   (si aún no estaba), para que el estante refleje lo leído. */
+function epubEnsureLibrary(bookId) {
+  if (!token || !MAGISTER_API_ENABLED) return;
+  if (libraryEntries.some((e) => e.book && e.book.id === bookId)) return;
+  api.addToLibrary(token, bookId)
+    .then(() => api.myLibrary(token))
+    .then((lib) => { libraryEntries = lib.entries || []; })
+    .catch(() => { /* el estante se refresca en la próxima visita */ });
+}
+
+/* ------------------------------------------- recientes (local) */
+
+/* Últimos libros abiertos en el lector, en este dispositivo:
+   máximo 10, del más reciente al más antiguo, sin duplicados
+   (reabrir un libro lo sube al frente). */
+const RECIENTES_KEY = "magister-recientes-v1";
+function recientesGet() {
+  let a = null;
+  try { a = JSON.parse(window.localStorage.getItem(RECIENTES_KEY) || "[]"); } catch { return []; }
+  if (!Array.isArray(a)) return [];
+  const out = [];
+  for (const r of a) {
+    if (!r || typeof r !== "object" || !BOOK_BY_ID.has(r.id)) continue;
+    out.push({ id: r.id, gid: r.gid, title: String(r.title || ""), author: String(r.author || ""), ts: typeof r.ts === "number" ? r.ts : 0 });
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+function recientesAdd(book) {
+  try {
+    const list = recientesGet().filter((r) => r.gid !== book.gid);
+    list.unshift({ id: book.id, gid: book.gid, title: book.title, author: book.author, ts: Date.now() });
+    window.localStorage.setItem(RECIENTES_KEY, JSON.stringify(list.slice(0, 10)));
+  } catch { /* sin almacenamiento */ }
+}
+function recientesFecha(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const mismoDia = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  if (mismoDia(d, new Date())) return "Hoy";
+  if (mismoDia(d, new Date(Date.now() - 86400000))) return "Ayer";
+  return d.toLocaleDateString("es", { day: "numeric", month: "short" });
 }
 
 function openChapter(bookId, chapter) {
@@ -1243,7 +1320,7 @@ document.addEventListener("click", async (e) => {
   else if (action === "subscribe") go({ name: "account" });
   else if (action === "read") openChapter(id, Number(el.dataset.ch || 0));
   else if (action === "reader-exit") goBack();
-  else if (action === "open-epub") go({ name: "epub" });
+  else if (action === "epub-muestra-ok") { const n = document.getElementById("epub-muestra-note"); if (n) n.hidden = true; }
   else if (action === "epub-exit") { epubPoke(); goBack(); }
   else if (action === "epub-font-inc") epubFontStep(10);
   else if (action === "epub-font-dec") epubFontStep(-10);
@@ -1282,6 +1359,7 @@ document.addEventListener("click", async (e) => {
   else if (action === "font-inc") { readerFontSize = Math.min(26, readerFontSize + 1); render(); }
   else if (action === "font-dec") { readerFontSize = Math.max(15, readerFontSize - 1); render(); }
   else if (action === "lib-filter") { libOnlyFavorites = el.dataset.f === "fav"; render(); }
+  else if (action === "lib-tab") { libTab = el.dataset.t === "recientes" ? "recientes" : "estante"; render(); }
   else if (action === "lib-remove") {
     try { await api.removeFromLibrary(token, id); const lib = await api.myLibrary(token); libraryEntries = lib.entries || []; render(); } catch { /* modo muestra */ }
   }
@@ -1353,12 +1431,14 @@ function T(key) { return key; }
 function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 
 /* ================================================================
-   LECTOR EPUB — MUESTRA (página publicada: aparece solo al
-   abrir el libro de muestra)
+   LECTOR EPUB (página publicada: se abre solo al tocar un
+   libro, y con ese libro)
 
-   Muestra del lector ePub de Magister: abre «libro-muestra.epub»
-   (libro breve y ORIGINAL, escrito solo para esta demostración)
-   con epub.js (CDN jsDelivr, con unpkg de respaldo; JSZip igual).
+   Lector ePub de Magister: abre el EPUB del libro tocado, servido
+   desde la bodega B2 por el servicio de lectura del puente
+   (/magister/leer/<gid>: con cuenta, la muestra del primer
+   capítulo; con suscripción, el libro completo), con epub.js
+   (CDN jsDelivr, con unpkg de respaldo; JSZip igual).
 
    Segunda vuelta (pedidos de Sergio):
    - Temas: exactamente dos, Claro y Oscuro.
@@ -1480,19 +1560,21 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
      destino; si no llega, la hoja se regresa con la misma
      fluidez.
 
-   El libro de muestra se abre COMPLETO y SIN CUENTA: es una demo
-   del lector, no contenido del catálogo, y las reglas de acceso
-   de los libros reales (cuenta / muestra / suscripción) no se
-   tocan. La salida usa goBack(): vuelve a la vista anterior y el
+   El lector solo se abre al tocar un libro (openBook) y siempre
+   con ESE libro: sin cuenta no se abre ninguno (la página manda
+   a «Mi cuenta») y el servicio de lectura exige la sesión y
+   aplica el modelo (muestra del primer capítulo con cuenta;
+   libro completo con suscripción o admin). La posición, las
+   marcas y las notas se guardan POR LIBRO (clave con su gid).
+   La salida usa goBack(): vuelve a la vista anterior y el
    header de la página no aparece dentro del lector, como ya es
    norma en la vista «reader».
    ================================================================ */
 
-const EPUB_URL = "libro-muestra.epub";
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r27";
+const EPUB_BUILD = "r28";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -1570,6 +1652,12 @@ const EPUB_TURN_GAIN = 1;
 const EPUB_CURL_RELEASE_MS = 336;
 
 let epubOpen = false;
+/* Libro abierto en el lector (lo fija openBook con los datos del
+   catálogo) y sus bytes, descargados del servicio de lectura.
+   acceso: "completo" | "muestra", según la cabecera del servicio. */
+let epubCurrent = null;
+let epubBytes = null;
+function epubPosKey() { return EPUB_POS_KEY + "-" + (epubCurrent ? epubCurrent.gid : "sinlibro"); }
 let epubBook = null;
 let epubRendition = null;
 let epubInitSeq = 0;
@@ -1601,28 +1689,11 @@ let epubChromeTimer = 0;
 /* Anotaciones aplicadas en esta sesión del lector */
 const epubAnnoApplied = new Set();
 
-function epubSampleCardHtml(variant) {
-  return `<section class="epub-sample ${variant === "cats" ? "in-cats" : ""}" aria-label="${T("Muestra del lector ePub")}">
-    <div class="epub-sample-cover" aria-hidden="true">
-      <p class="esc-brand">MAGISTER</p>
-      <p class="esc-rule"></p>
-      <p class="esc-title">${T("Libro de muestra")}</p>
-      <p class="esc-sub">${T("Tres capítulos breves")}</p>
-    </div>
-    <div class="epub-sample-info">
-      <p class="epub-sample-tag">${T("Nuevo · Muestra del lector ePub")}</p>
-      <h2 class="epub-sample-h">${T("Libro de muestra")}</h2>
-      <p class="epub-sample-p">${T("Un libro breve para probar el lector nuevo de Magister: al deslizar el dedo, la página se levanta del borde y se dobla como la hoja de un libro de papel, siguiendo tu dedo hasta pasar a la siguiente; ajusta el tamaño de la letra, cambia entre el tema claro y el oscuro, salta con el índice de las tres rayas y mantén tocada una palabra —o arrastra sin soltar para seleccionar un pasaje entero— para ver su significado y su traducción, subrayarla, resaltarla o dejarle una nota. Los controles se esconden solos para leer sin estorbos: toca la pantalla y vuelven. Se abre completo y sin cuenta: es solo la muestra del lector.")}</p>
-      <button type="button" class="btn-primary pad" data-action="open-epub">${T("Abrir en el lector ePub")}</button>
-    </div>
-  </section>`;
-}
-
 function epubHtml() {
   return `<div class="epub-shell" id="epub-shell">
     <div class="epub-top">
       <button type="button" class="epub-exit" data-action="epub-exit" aria-label="${T("Salir del libro")}">←</button>
-      <p class="epub-book-title">${T("Libro de muestra")}</p>
+      <p class="epub-book-title">${esc(epubCurrent ? epubCurrent.title : T("Libro"))}</p>
       <div class="epub-tools">
         <button type="button" class="epub-iconbtn" data-action="epub-toc" aria-label="${T("Índice")}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></svg></button>
         <button type="button" class="epub-iconbtn" data-action="epub-search" aria-label="${T("Buscar en el libro")}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5 16.6 16.6"/></svg></button>
@@ -1649,6 +1720,7 @@ function epubHtml() {
       <div class="epub-sheet" id="epub-sheet" aria-hidden="true"></div>
       <div class="epub-fold" id="epub-fold" hidden aria-hidden="true"><div class="epub-fold-shade"></div><div class="epub-fold-flap"></div></div>
       <p class="epub-loading" id="epub-loading">${T("Abriendo el libro…")}</p>
+      <p class="epub-muestra-note" id="epub-muestra-note" data-action="epub-muestra-ok" hidden>Muestra gratuita: estás leyendo el primer capítulo. Con la suscripción, el libro completo. <span aria-hidden="true">✕</span></p>
       <div class="epub-top-backdrop" id="epub-top-backdrop" hidden></div>
       <div class="epub-toc epub-topsheet" id="epub-toc" hidden>
         <div class="epub-panel-head">
@@ -3204,6 +3276,22 @@ async function initEpubReader() {
   epubOpen = true;
   epubCurlLayerSync();
   const seq = ++epubInitSeq;
+  if (!epubCurrent) {
+    const loading = document.getElementById("epub-loading");
+    if (loading) { loading.hidden = false; loading.textContent = T("No hay ningún libro abierto."); }
+    return;
+  }
+  try {
+    epubBytes = await epubFetchCurrent();
+  } catch (fatal) {
+    if (seq !== epubInitSeq) return;
+    const loading = document.getElementById("epub-loading");
+    if (loading) { loading.hidden = false; loading.textContent = fatal.message; }
+    epubSheetSetOff(false);
+    epubChromeShow();
+    return;
+  }
+  if (seq !== epubInitSeq) return;
   try {
     await epubOpenBook(seq, false);
   } catch (err) {
@@ -3216,12 +3304,33 @@ async function initEpubReader() {
       const loading = document.getElementById("epub-loading");
       if (loading) {
         loading.hidden = false;
-        loading.textContent = T("No se pudo abrir el libro de muestra. Revisa tu conexión y vuelve a intentarlo.");
+        loading.textContent = T("No se pudo abrir el libro. Revisa tu conexión y vuelve a intentarlo.");
       }
       epubSheetSetOff(false);
       epubChromeShow();
     }
   }
+}
+
+/* Descarga el EPUB del libro abierto desde el servicio de lectura
+   (que aplica el modelo de acceso con la sesión). Un error del
+   servicio —sin sesión, muestra no disponible— es definitivo y se
+   muestra tal cual: no cae al modo mínimo. */
+async function epubFetchCurrent() {
+  if (!token) throw new Error(T("Inicia sesión para leer este libro."));
+  let res;
+  try {
+    res = await fetch(MAGISTER_API_BASE + "/leer/" + epubCurrent.gid, {
+      headers: { Authorization: "Bearer " + token },
+    });
+  } catch { throw new Error(T("No se pudo descargar el libro. Revisa tu conexión y vuelve a intentarlo.")); }
+  if (!res.ok) {
+    let msg = "";
+    try { const j = await res.json(); msg = (j && j.error) || ""; } catch { /* respuesta sin cuerpo */ }
+    throw new Error(msg || T("No se pudo abrir el libro."));
+  }
+  epubCurrent.acceso = res.headers.get("X-Magister-Acceso") || "completo";
+  return res.arrayBuffer();
 }
 
 function epubTeardownBook() {
@@ -3238,7 +3347,7 @@ async function epubOpenBook(seq, minimal) {
   const loading = document.getElementById("epub-loading");
   await epubLoadLibs();
   if (seq !== epubInitSeq || view.name !== "epub") throw new Error("apertura cancelada");
-  epubBook = window.ePub(EPUB_URL);
+  epubBook = window.ePub(epubBytes);
   epubRendition = epubBook.renderTo("epub-viewer", {
     width: "100%", height: "100%", flow: "paginated", spread: "none",
   });
@@ -3252,10 +3361,10 @@ async function epubOpenBook(seq, minimal) {
   });
   let startAt;
   if (!minimal) {
-    try { startAt = window.localStorage.getItem(EPUB_POS_KEY) || undefined; } catch { startAt = undefined; }
+    try { startAt = window.localStorage.getItem(epubPosKey()) || undefined; } catch { startAt = undefined; }
     /* Posición con forma imposible (guardada por otra build o
        dañada): se descarta ANTES de pedirla, no tras el fracaso. */
-    if (startAt && !epubIsCfi(startAt)) { epubStoreRemove(EPUB_POS_KEY); startAt = undefined; }
+    if (startAt && !epubIsCfi(startAt)) { epubStoreRemove(epubPosKey()); startAt = undefined; }
   }
   try {
     await epubRendition.display(startAt);
@@ -3265,11 +3374,13 @@ async function epubOpenBook(seq, minimal) {
        debe condenar el lector a la pantalla de error: se descarta
        la posición y el libro se abre desde la portada. */
     if (!startAt) throw dispErr;
-    epubStoreRemove(EPUB_POS_KEY);
+    epubStoreRemove(epubPosKey());
     await epubRendition.display();
   }
   if (seq !== epubInitSeq) throw new Error("apertura cancelada");
   if (loading) loading.hidden = true;
+  const muestraNote = document.getElementById("epub-muestra-note");
+  if (muestraNote) muestraNote.hidden = !(epubCurrent && epubCurrent.acceso === "muestra");
   /* Las marcas se reaplican con su propio blindaje; jamás tumban
      la apertura, y en el modo mínimo ni se intentan. */
   if (!minimal) { try { epubApplyAnnotations(); } catch { /* sin marcas en esta apertura */ } }
@@ -3284,12 +3395,19 @@ async function epubOpenBook(seq, minimal) {
     .then((nav) => { if (seq === epubInitSeq) epubFillToc(nav && nav.toc ? nav.toc : []); })
     .catch(() => {});
   epubBook.ready
-    .then(() => epubBook.locations.generate(1200))
+    .then(() => { if (seq === epubInitSeq && epubBook) return epubBook.locations.generate(1200); })
     .then(() => { if (seq === epubInitSeq) epubUpdateProgress(); })
     .catch(() => {});
 }
 
 function destroyEpubReader() {
+  /* La posición queda guardada POR LIBRO también al salir (la de
+     cada página ya la guarda «relocated» al pasar). */
+  try {
+    const l = epubRendition && epubRendition.location;
+    if (l && l.start && l.start.cfi) window.localStorage.setItem(epubPosKey(), l.start.cfi);
+  } catch { /* sin almacenamiento */ }
+  epubBytes = null;
   epubInitSeq++;
   epubDictSeq++;
   epubOpen = false;
@@ -3319,7 +3437,7 @@ function destroyEpubReader() {
 function epubOnRelocated(loc) {
   try {
     if (loc && loc.start && loc.start.cfi) {
-      window.localStorage.setItem(EPUB_POS_KEY, loc.start.cfi);
+      window.localStorage.setItem(epubPosKey(), loc.start.cfi);
     }
   } catch { /* sin almacenamiento */ }
   epubUpdateProgress();
@@ -3332,8 +3450,8 @@ function epubUpdateProgress() {
     const txt = document.getElementById("epub-prog-txt");
     if (!fill || !txt || !epubBook) return;
     let cfi = null;
-    try { cfi = window.localStorage.getItem(EPUB_POS_KEY); } catch { cfi = null; }
-    if (cfi && !epubIsCfi(cfi)) { epubStoreRemove(EPUB_POS_KEY); cfi = null; }
+    try { cfi = window.localStorage.getItem(epubPosKey()); } catch { cfi = null; }
+    if (cfi && !epubIsCfi(cfi)) { epubStoreRemove(epubPosKey()); cfi = null; }
     let pct = -1;
     if (cfi && epubBook.locations && typeof epubBook.locations.percentageFromCfi === "function") {
       let p = NaN;
@@ -3815,7 +3933,17 @@ function epubOpenTranslateView() {
    de builds viejas con otra forma, CFI imposibles de parsear — se
    descarta sin ruido, para que el estado sucio de un navegador que
    viene probando desde builds anteriores nunca rompa el lector. */
+/* Las marcas y notas se guardan POR LIBRO: la clave base recibe el
+   sufijo del gid abierto, para que cada libro conserve las suyas. */
+function epubScopedKey(key) {
+  if (key === EPUB_HL_KEY || key === EPUB_UL_KEY || key === EPUB_NOTES_KEY) {
+    return key + "-" + (epubCurrent ? epubCurrent.gid : "sinlibro");
+  }
+  return key;
+}
+
 function epubListGet(key) {
+  key = epubScopedKey(key);
   let a = null;
   try { a = JSON.parse(window.localStorage.getItem(key) || "[]"); } catch { return []; }
   if (!Array.isArray(a)) return [];
@@ -3826,8 +3954,8 @@ function epubListGet(key) {
     const clean = { cfi: it.cfi, text: typeof it.text === "string" ? it.text : "" };
     /* Color de la marca (r19): resaltado y subrayado guardan el
        color elegido en la paleta junto a tipo y CFI. */
-    if ((key === EPUB_HL_KEY || key === EPUB_UL_KEY) && typeof it.color === "string" && /^#[0-9a-fA-F]{6}$/.test(it.color)) clean.color = it.color;
-    if (key === EPUB_NOTES_KEY) {
+    if ((key.indexOf(EPUB_HL_KEY) === 0 || key.indexOf(EPUB_UL_KEY) === 0) && typeof it.color === "string" && /^#[0-9a-fA-F]{6}$/.test(it.color)) clean.color = it.color;
+    if (key.indexOf(EPUB_NOTES_KEY) === 0) {
       clean.note = typeof it.note === "string" ? it.note : "";
       if (typeof it.ts === "number" && isFinite(it.ts)) clean.ts = it.ts;
     }
@@ -3837,6 +3965,7 @@ function epubListGet(key) {
 }
 
 function epubListSet(key, a) {
+  key = epubScopedKey(key);
   try { window.localStorage.setItem(key, JSON.stringify(a)); } catch { /* sin almacenamiento */ }
 }
 
