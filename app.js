@@ -1574,7 +1574,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r30";
+const EPUB_BUILD = "r31";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";

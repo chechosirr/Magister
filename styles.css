@@ -161,6 +161,9 @@ img { display: block; }
 /* ---------------------------------------------------------- layout */
 
 #app { position: relative; display: flex; min-height: 100dvh; flex-direction: column; background: var(--bg); color: var(--text); }
+/* r31: #root estira a todo el alto de #app y main (flex: 1) ocupa lo
+   que queda tras el header; así el pie puede pegarse al fondo. */
+#root { flex: 1; display: flex; flex-direction: column; }
 main { display: flex; flex: 1; flex-direction: column; width: 100%; }
 main.wrap { margin: 0 auto; max-width: 1024px; padding: 0 16px 64px; }
 main.hidden, header.hidden { display: none; }
@@ -168,7 +171,13 @@ main.hidden, header.hidden { display: none; }
 .prepaint { pointer-events: none; position: fixed; inset: 0; opacity: 0; }
 .prepaint img { width: 100%; height: 100%; object-fit: cover; }
 
-footer.site-footer { margin-top: 56px; border-top: 1px solid var(--border); padding: 16px 0 8px; }
+/* r31 (pedido de Sergio): el pie SIEMPRE hasta abajo, en todas las
+   vistas: margin-top:auto lo empuja al fondo de main cuando el
+   contenido es corto y lo deja tras el contenido cuando es largo.
+   Con pie presente, el padding inferior de .wrap baja a 16px para
+   que el pie quede junto al borde de la pantalla, no flotando. */
+footer.site-footer { margin-top: auto; border-top: 1px solid var(--border); padding: 16px 0 8px; }
+main.wrap:has(> footer.site-footer) { padding-bottom: 16px; }
 footer.site-footer p { font-size: 12px; color: var(--dim); margin: 0; }
 
 /* ---------------------------------------------------------- escaparate */
@@ -211,15 +220,21 @@ footer.site-footer p { font-size: 12px; color: var(--dim); margin: 0; }
 .cover-typo.large .t { font-size: 20px; }
 .cover-typo.large .a { font-size: 14px; }
 
-.book-card { display: block; width: 100%; text-align: left; background: none; border: none; padding: 0; }
-.book-card .bt { margin: 8px 0 0; font-size: 14px; font-weight: 600; line-height: 1.375; color: var(--text);
+.book-card { display: block; width: 100%; min-width: 0; text-align: left; background: none; border: none; padding: 0; }
+/* r31: el bloque del título reserva SIEMPRE dos líneas (altura fija)
+   en toda tarjeta de libro: títulos simétricos y autor alineado por
+   fila aunque el título sea de una línea. */
+.book-card .bt { margin: 8px 0 0; font-size: 14px; font-weight: 600; line-height: 1.375; color: var(--text); min-height: 2.75em;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .book-card .ba { margin: 0; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .book-card .soon { margin: 2px 0 0; font-size: 11px; font-weight: 600; color: var(--brass); }
 
-.grid-books { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-@media (min-width: 640px) { .grid-books { grid-template-columns: repeat(4, 1fr); } }
-@media (min-width: 1024px) { .grid-books { grid-template-columns: repeat(6, 1fr); } }
+/* r31: pistas minmax(0, 1fr) — con 1fr a secas, el tamaño intrínseco
+   de una portada grande ensanchaba su columna y desproporcionaba la
+   rejilla (captura de Sergio buscando «Quijote»). */
+.grid-books { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+@media (min-width: 640px) { .grid-books { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .grid-books { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
 
 /* Filas deslizables estilo catálogo (como las del reproductor de Rager) */
 .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; -webkit-overflow-scrolling: touch; }
@@ -467,8 +482,11 @@ h1.view-title.center { text-align: center; }
 
 /* --------------------------------- portadas uniformes (grid) */
 
-.cover-box { display: block; aspect-ratio: 2 / 3; overflow: hidden; border-radius: 3px; box-shadow: 0 2px 10px rgba(43,33,24,0.35); }
-.cover-box .cover-img, .cover-box .cover-typo { width: 100%; height: 100%; border-radius: 0; box-shadow: none; }
+.cover-box { position: relative; display: block; aspect-ratio: 2 / 3; overflow: hidden; border-radius: 3px; box-shadow: 0 2px 10px rgba(43,33,24,0.35); }
+/* r31: la portada llena el marco 2:3 en posición absoluta — su
+   tamaño intrínseco ya no puede deformar la tarjeta ni la rejilla;
+   object-fit: cover recorta lo que sobre, como en «Ver todo». */
+.cover-box .cover-img, .cover-box .cover-typo { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0; box-shadow: none; }
 .grid-books .book-card .bt {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden; min-height: 2.75em;
