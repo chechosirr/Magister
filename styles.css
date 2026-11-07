@@ -328,6 +328,22 @@ h1.view-title.center { text-align: center; }
 .lib-actions .fav.on { color: var(--brass); }
 .lib-actions .remove { background: none; border: none; font-size: 12px; font-weight: 500; color: var(--accent); padding: 0; }
 
+/* «Tu biblioteca» en dos columnas (pedido de Sergio, 2026-11-07): bajo
+   el título cruza una línea toda la pantalla; a la izquierda, las
+   tarjetas-sección apiladas hasta 1/3 del ancho con su línea vertical
+   continua; a la derecha, el contenido de la sección elegida, y la
+   tarjeta seleccionada se marca con un halo azul (#3b82f6). */
+.lib-rule { height: 1px; background: var(--border); margin-top: 16px; width: 100vw; margin-left: calc(50% - 50vw); }
+.lib-split { display: flex; align-items: stretch; width: 100vw; margin-left: calc(50% - 50vw); min-height: 52vh; }
+.lib-side { flex: 0 0 33.333%; border-right: 1px solid var(--border); padding: 16px 12px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.lib-tabcard { display: block; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 12px; font-size: 15px; font-weight: 600; color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+.lib-tabcard.active { border-color: #3b82f6; box-shadow: 0 0 0 1.5px #3b82f6, 0 0 16px 3px rgba(59, 130, 246, 0.55); }
+.lib-content { flex: 1 1 auto; min-width: 0; padding: 16px 16px 8px; }
+.lib-content .grid-books { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.lib-content .grid-books > div { min-width: 0; }
+@media (min-width: 640px) { .lib-content .grid-books { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .lib-content .grid-books { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
 /* ---------------------------------------------------------- chat */
 
 /* El botón «Pídenos tu libro» del header NO lleva estilos propios:

@@ -127,8 +127,7 @@ let libraryEntries = [];       // biblioteca personal (del servicio)
 let view = { name: "home" };   // home | library | categories | search | account | detail | reader | chat | epub
 let viewHistory = [];          // pila de vistas para la flecha de volver del header
 let catalogHidden = new Set(); // ids pausados/eliminados en el servicio (no se muestran al público)
-let libOnlyFavorites = false;
-let libTab = "estante";        // pestaña de «Mi biblioteca»: "estante" | "recientes"
+let libTab = "estante";        // sección de «Tu biblioteca»: "estante" | "favoritos" | "recientes"
 let authNotice = false;        // aviso de «servicio en activación» tras intentar entrar en modo muestra
 let authError = "";
 let authBusy = false;
@@ -223,18 +222,17 @@ function escaparateHtml() {
 }
 
 function libraryHtml() {
-  const shown = libOnlyFavorites ? libraryEntries.filter((e) => e.favorite) : libraryEntries;
   const finishedCount = libraryEntries.filter((e) => e.finished).length;
   let body;
   if (libTab === "recientes") {
     const recs = recientesGet();
     if (recs.length === 0) {
-      body = `<div class="card dashed mt-8" style="margin-top:32px">
+      body = `<div class="card dashed">
       <p class="small dim" style="margin:0">Todavía no abres ningún libro en el lector. Cuando leas uno, aparecerá aquí para seguir donde ibas.</p>
       <button type="button" class="btn-primary pad mt-3" data-action="goto-categories">Explorar</button>
     </div>`;
     } else {
-      body = `<div class="grid-books mt-5" style="margin-top:20px">${recs.map((r) => {
+      body = `<div class="grid-books">${recs.map((r) => {
         const book = BOOK_BY_ID.get(r.id);
         let enCurso = false;
         try { enCurso = !!window.localStorage.getItem("magister-epub-pos-" + r.gid); } catch { enCurso = false; }
@@ -244,15 +242,17 @@ function libraryHtml() {
       </div>`;
       }).join("")}</div>`;
     }
-  } else if (shown.length === 0) {
-    body = `<div class="card dashed mt-8" style="margin-top:32px">
-      <p class="small dim" style="margin:0">${libOnlyFavorites
+  } else {
+    const entries = libTab === "favoritos" ? libraryEntries.filter((e) => e.favorite) : libraryEntries;
+    if (entries.length === 0) {
+      body = `<div class="card dashed">
+      <p class="small dim" style="margin:0">${libTab === "favoritos"
         ? "Todavía no marcas ningún favorito. Toca la estrella en un libro de tu estante."
         : "Tu estante está vacío. Busca en las categorías y añade tu primer libro."}</p>
       <button type="button" class="btn-primary pad mt-3" data-action="goto-categories">Explorar</button>
     </div>`;
-  } else {
-    body = `<div class="grid-books mt-5" style="margin-top:20px">${shown.map((entry) => {
+    } else {
+      body = `<div class="grid-books">${entries.map((entry) => {
       const book = entry.book;
       return `<div>
         ${bookCardHtml(book)}
@@ -262,20 +262,22 @@ function libraryHtml() {
           <button type="button" class="remove" data-action="lib-remove" data-id="${book.id}" aria-label="Quitar ${esc(book.title)} de tu biblioteca">Quitar</button>
         </div>
       </div>`;
-    }).join("")}</div>`;
+      }).join("")}</div>`;
+    }
   }
+  const tabCard = (t, label) => `<button type="button" class="lib-tabcard${libTab === t ? " active" : ""}" data-action="lib-tab" data-t="${t}" aria-pressed="${libTab === t ? "true" : "false"}">${label}</button>`;
   return `<div class="view-pad">
     <h1 class="view-title">Tu biblioteca</h1>
     <p class="small dim mt-1">${libraryEntries.length} ${libraryEntries.length === 1 ? "libro" : "libros"} en tu estante · ${finishedCount} terminados</p>
-    <div class="chip-row">
-      <button type="button" class="chip${libTab === "estante" ? " active" : ""}" data-action="lib-tab" data-t="estante">Tu estante</button>
-      <button type="button" class="chip${libTab === "recientes" ? " active" : ""}" data-action="lib-tab" data-t="recientes">Recientes</button>
+    <div class="lib-rule" aria-hidden="true"></div>
+    <div class="lib-split">
+      <nav class="lib-side" aria-label="Secciones de tu biblioteca">
+        ${tabCard("estante", "Tu estante")}
+        ${tabCard("favoritos", "Favoritos")}
+        ${tabCard("recientes", "Recientes")}
+      </nav>
+      <div class="lib-content">${body}</div>
     </div>
-    ${libTab === "estante" ? `<div class="chip-row">
-      <button type="button" class="chip${!libOnlyFavorites ? " active" : ""}" data-action="lib-filter" data-f="all">Todos</button>
-      <button type="button" class="chip${libOnlyFavorites ? " active" : ""}" data-action="lib-filter" data-f="fav">★ Favoritos</button>
-    </div>` : ""}
-    ${body}
   </div>`;
 }
 
@@ -970,7 +972,7 @@ function chatViewHtml() {
         <p class="chatview-title">Magister</p>
         <p class="chatview-sub">${chatIntent === "libro" ? "Pídenos tu libro" : "Ayuda"}</p>
       </div>
-      ${!anonNeedsIntro && !chatClosed ? `<button type="button" class="chatview-endbtn" data-action="chat-finalize">Finalizar chat</button>` : ""}
+      ${!anonNeedsIntro ? (chatClosed ? `<button type="button" class="chatview-endbtn" data-action="chat-new">Iniciar un chat nuevo</button>` : `<button type="button" class="chatview-endbtn" data-action="chat-finalize">Finalizar chat</button>`) : ""}
     </div>
     <p class="chatview-welcome">${esc(CHAT_EXPLAIN[chatIntent])}</p>
     ${anonNeedsIntro ? `<form id="chat-intro" class="chat-intro form-stack">
@@ -989,7 +991,6 @@ function chatViewHtml() {
     ${chatClosed ? `<div class="chat-closed">
       <p class="chat-closed-title">Chat finalizado. Gracias por escribirnos.</p>
       <p class="chat-closed-sub">Si necesitas algo más, puedes empezar un chat nuevo.</p>
-      <button type="button" class="btn-primary" data-action="chat-new">Iniciar un chat nuevo</button>
     </div>` : `<form id="chat-form" class="chatview-composer">
       <textarea id="chat-text" rows="1" maxlength="1000" placeholder="Escribe un mensaje…" aria-label="Escribe un mensaje"></textarea>
       <button type="submit" class="chat-send" aria-label="Enviar mensaje">➤</button>
@@ -1358,8 +1359,7 @@ document.addEventListener("click", async (e) => {
   }
   else if (action === "font-inc") { readerFontSize = Math.min(26, readerFontSize + 1); render(); }
   else if (action === "font-dec") { readerFontSize = Math.max(15, readerFontSize - 1); render(); }
-  else if (action === "lib-filter") { libOnlyFavorites = el.dataset.f === "fav"; render(); }
-  else if (action === "lib-tab") { libTab = el.dataset.t === "recientes" ? "recientes" : "estante"; render(); }
+  else if (action === "lib-tab") { libTab = ["favoritos", "recientes"].includes(el.dataset.t) ? el.dataset.t : "estante"; render(); }
   else if (action === "lib-remove") {
     try { await api.removeFromLibrary(token, id); const lib = await api.myLibrary(token); libraryEntries = lib.entries || []; render(); } catch { /* modo muestra */ }
   }
