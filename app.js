@@ -127,8 +127,7 @@ let libraryEntries = [];       // biblioteca personal (del servicio)
 let view = { name: "home" };   // home | library | categories | search | account | detail | reader | chat | epub
 let viewHistory = [];          // pila de vistas para la flecha de volver del header
 let catalogHidden = new Set(); // ids pausados/eliminados en el servicio (no se muestran al público)
-let libOnlyFavorites = false;
-let libTab = "estante";        // pestaña de «Mi biblioteca»: "estante" | "recientes"
+let libTab = "estante";        // sección de «Tu biblioteca»: "estante" | "favoritos" | "recientes"
 let authNotice = false;        // aviso de «servicio en activación» tras intentar entrar en modo muestra
 let authError = "";
 let authBusy = false;
@@ -223,18 +222,17 @@ function escaparateHtml() {
 }
 
 function libraryHtml() {
-  const shown = libOnlyFavorites ? libraryEntries.filter((e) => e.favorite) : libraryEntries;
   const finishedCount = libraryEntries.filter((e) => e.finished).length;
   let body;
   if (libTab === "recientes") {
     const recs = recientesGet();
     if (recs.length === 0) {
-      body = `<div class="card dashed mt-8" style="margin-top:32px">
+      body = `<div class="card dashed">
       <p class="small dim" style="margin:0">Todavía no abres ningún libro en el lector. Cuando leas uno, aparecerá aquí para seguir donde ibas.</p>
       <button type="button" class="btn-primary pad mt-3" data-action="goto-categories">Explorar</button>
     </div>`;
     } else {
-      body = `<div class="grid-books mt-5" style="margin-top:20px">${recs.map((r) => {
+      body = `<div class="grid-books">${recs.map((r) => {
         const book = BOOK_BY_ID.get(r.id);
         let enCurso = false;
         try { enCurso = !!window.localStorage.getItem("magister-epub-pos-" + r.gid); } catch { enCurso = false; }
@@ -244,15 +242,17 @@ function libraryHtml() {
       </div>`;
       }).join("")}</div>`;
     }
-  } else if (shown.length === 0) {
-    body = `<div class="card dashed mt-8" style="margin-top:32px">
-      <p class="small dim" style="margin:0">${libOnlyFavorites
+  } else {
+    const entries = libTab === "favoritos" ? libraryEntries.filter((e) => e.favorite) : libraryEntries;
+    if (entries.length === 0) {
+      body = `<div class="card dashed">
+      <p class="small dim" style="margin:0">${libTab === "favoritos"
         ? "Todavía no marcas ningún favorito. Toca la estrella en un libro de tu estante."
         : "Tu estante está vacío. Busca en las categorías y añade tu primer libro."}</p>
       <button type="button" class="btn-primary pad mt-3" data-action="goto-categories">Explorar</button>
     </div>`;
-  } else {
-    body = `<div class="grid-books mt-5" style="margin-top:20px">${shown.map((entry) => {
+    } else {
+      body = `<div class="grid-books">${entries.map((entry) => {
       const book = entry.book;
       return `<div>
         ${bookCardHtml(book)}
@@ -262,20 +262,22 @@ function libraryHtml() {
           <button type="button" class="remove" data-action="lib-remove" data-id="${book.id}" aria-label="Quitar ${esc(book.title)} de tu biblioteca">Quitar</button>
         </div>
       </div>`;
-    }).join("")}</div>`;
+      }).join("")}</div>`;
+    }
   }
+  const tabCard = (t, label) => `<button type="button" class="lib-tabcard${libTab === t ? " active" : ""}" data-action="lib-tab" data-t="${t}" aria-pressed="${libTab === t ? "true" : "false"}">${label}</button>`;
   return `<div class="view-pad">
     <h1 class="view-title">Tu biblioteca</h1>
     <p class="small dim mt-1">${libraryEntries.length} ${libraryEntries.length === 1 ? "libro" : "libros"} en tu estante · ${finishedCount} terminados</p>
-    <div class="chip-row">
-      <button type="button" class="chip${libTab === "estante" ? " active" : ""}" data-action="lib-tab" data-t="estante">Tu estante</button>
-      <button type="button" class="chip${libTab === "recientes" ? " active" : ""}" data-action="lib-tab" data-t="recientes">Recientes</button>
+    <div class="lib-rule" aria-hidden="true"></div>
+    <div class="lib-split">
+      <nav class="lib-side" aria-label="Secciones de tu biblioteca">
+        ${tabCard("estante", "Tu estante")}
+        ${tabCard("favoritos", "Favoritos")}
+        ${tabCard("recientes", "Recientes")}
+      </nav>
+      <div class="lib-content">${body}</div>
     </div>
-    ${libTab === "estante" ? `<div class="chip-row">
-      <button type="button" class="chip${!libOnlyFavorites ? " active" : ""}" data-action="lib-filter" data-f="all">Todos</button>
-      <button type="button" class="chip${libOnlyFavorites ? " active" : ""}" data-action="lib-filter" data-f="fav">★ Favoritos</button>
-    </div>` : ""}
-    ${body}
   </div>`;
 }
 
@@ -1357,8 +1359,7 @@ document.addEventListener("click", async (e) => {
   }
   else if (action === "font-inc") { readerFontSize = Math.min(26, readerFontSize + 1); render(); }
   else if (action === "font-dec") { readerFontSize = Math.max(15, readerFontSize - 1); render(); }
-  else if (action === "lib-filter") { libOnlyFavorites = el.dataset.f === "fav"; render(); }
-  else if (action === "lib-tab") { libTab = el.dataset.t === "recientes" ? "recientes" : "estante"; render(); }
+  else if (action === "lib-tab") { libTab = ["favoritos", "recientes"].includes(el.dataset.t) ? el.dataset.t : "estante"; render(); }
   else if (action === "lib-remove") {
     try { await api.removeFromLibrary(token, id); const lib = await api.myLibrary(token); libraryEntries = lib.entries || []; render(); } catch { /* modo muestra */ }
   }
@@ -1573,7 +1574,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r28";
+const EPUB_BUILD = "r30";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -1649,6 +1650,13 @@ const EPUB_TURN_DX = 56;
    (asentamiento 336 ms; retorno del pliegue de reserva 224 ms). */
 const EPUB_TURN_GAIN = 1;
 const EPUB_CURL_RELEASE_MS = 336;
+/* r30 (precisión de Sergio con su captura photo-86): TOPE DURO de
+   inclinación de la línea de doblez en los pases horizontales —
+   15°, el ángulo medido sobre su captura (14,7°). La inclinación
+   solo nace del Δy real del dedo, amarrada a este tope; sin sesgo
+   automático (el de 30° de r24 quedó derogado por esta precisión)
+   y sin que la punta cruce jamás al otro lado de su ancla. */
+const EPUB_EDGE_TILT_MAX = 15;
 
 let epubOpen = false;
 /* Libro abierto en el lector (lo fija openBook con los datos del
@@ -2119,6 +2127,10 @@ function epubFoldShow(dir, adv) {
     el.style.setProperty("--fold-bg", t.bg);
     epubFold = el;
   }
+  /* Generación del elemento (r30): cada uso nuevo invalida el
+     temporizador de ocultado de un asentamiento anterior, para
+     que nunca esconda el pliegue en mitad de otro gesto. */
+  el.__foldGen = (el.__foldGen || 0) + 1;
   el.classList.toggle("next", dir > 0);
   el.classList.toggle("prev", dir < 0);
   el.style.transition = "none";
@@ -2133,10 +2145,31 @@ function epubFoldSettle(dir, complete) {
   const el = epubFold;
   epubFold = null;
   if (complete && epubRendition) {
-    try { if (dir > 0) epubRendition.next(); else epubRendition.prev(); }
-    catch { /* fin o principio del libro */ }
+    /* Candado de vuelta (r30): el pliegue clásico comparte el
+       candado del volteo — mientras su vuelta navega y asienta,
+       NINGÚN gesto nuevo entra (epubSheetStart y los gestos del
+       documento lo respetan). Sin este candado, una ráfaga de
+       pases ultrarrápidos encadenaba vueltas sobre la misma
+       navegación y la animación «se volvía loca» (Sergio). El
+       candado se libera cuando la navegación asienta, con la
+       misma red de seguridad de 800 ms del volteo. */
+    epubCurlBusy = true;
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      epubCurlBusy = false;
+      epubCurlPoolSchedule();
+    };
+    try {
+      const pr = dir > 0 ? epubRendition.next() : epubRendition.prev();
+      if (pr && pr.then) pr.then(() => setTimeout(release, 60), () => setTimeout(release, 60));
+      else setTimeout(release, 60);
+    } catch { setTimeout(release, 60); }
+    setTimeout(release, 800);
   }
   if (!el) return;
+  const gen = (el.__foldGen = (el.__foldGen || 0) + 1);
   if (complete) {
     /* termina el doblez a su tamaño máximo y se desvanece */
     el.style.transition = "width 154ms ease-out, height 154ms ease-out, opacity 140ms ease 98ms";
@@ -2149,7 +2182,7 @@ function epubFoldSettle(dir, complete) {
     el.style.height = "0px";
     el.style.opacity = "0";
   }
-  window.setTimeout(() => { el.hidden = true; }, 340);
+  window.setTimeout(() => { if (el.__foldGen === gen) el.hidden = true; }, 340);
 }
 
 function epubFoldCancel() {
@@ -2522,6 +2555,10 @@ function epubSheetEnd(x, y) {
         break;
       }
     }
+    /* Velocidad acotada (r30): un flick real no pasa de ~3 px/ms;
+       el exceso solo servía para heredar vueltas a gestos que no
+       las justifican. */
+    velDir = Math.max(-3, Math.min(3, velDir));
     if (g.curl) { epubCurlRelease(adv, dur, velDir); return; }
     const complete = adv >= EPUB_TURN_DX || (adv >= 24 && velDir >= 0.45);
     epubFoldSettle(g.dir, complete);
@@ -2607,8 +2644,10 @@ function epubAttachGestures(contents) {
   doc.addEventListener("touchstart", (e) => {
     /* Con la lámina retirada (modo selección, r15) los toques del
        iframe son SOLO para ajustar la selección nativa: estos
-       gestos no deben paginar ni alternar controles. */
-    if (!epubOpen || epubSheetOff || e.touches.length !== 1) { epubGesture = null; return; }
+       gestos no deben paginar ni alternar controles. Y con el
+       candado de vuelta puesto (r30) tampoco entra gesto nuevo
+       por esta vía mientras una vuelta asienta. */
+    if (!epubOpen || epubSheetOff || epubCurlBusy || e.touches.length !== 1) { epubGesture = null; return; }
     const t = e.touches[0];
     epubGesture = { x0: t.clientX, y0: t.clientY, px: 0, py: 0, dir: 0, t0: Date.now(), contents };
   }, { passive: true });
@@ -3043,7 +3082,8 @@ function epubCurlFrame() {
    largo + solapa-reverso larga tras el pliegue — en vez del
    cilindro estrecho que viajaba casi solo empalmando los dos
    textos; desde r24 el punto efectivo sigue al dedo en 2D y
-   lleva el sesgo diagonal de ~30° (ver epubCurlEdgeFrame). */
+   sigue al dedo en 2D dentro del tope duro de 15° de la
+   precisión r30, sin sesgo automático (ver epubCurlEdgeFrame). */
 function epubCurlCornerFrame() {
   const C = epubCurl;
   if (!C) return;
@@ -3053,6 +3093,12 @@ function epubCurlCornerFrame() {
     x: Math.max(-90, Math.min(W + 90, C.fx)),
     y: Math.max(-90, Math.min(H + 90, C.fy)),
   };
+  /* Anti-voltereta (r30): la punta nunca cruza al otro lado de
+     su esquina ancla — si el dedo rodea y vuelve más allá de la
+     esquina, el reflejo se quedaba del otro lado y la hoja daba
+     una voltereta sobre sí misma (reporte de Sergio). */
+  if (C.dir > 0) F.x = Math.min(F.x, K.x + 24);
+  else F.x = Math.max(F.x, K.x - 24);
   /* Cono diagonal de ~45° (r21): lo vertical queda amarrado a lo
      horizontal; un arrastre con dominante vertical apenas asoma
      la esquina en diagonal y al soltar la página queda como
@@ -3074,35 +3120,36 @@ function epubCurlCornerFrame() {
    riel horizontal rígido como hasta r23, donde la Y del dedo
    se ignoraba entera y el pase se sentía bloqueado (Sergio,
    sobre la r23: «sigue igual que antes»).
-   DIAGONAL DE ~30° (r24; reemplaza a la inclinación sutil de
-   r23 — 2°→8°, imperceptible para Sergio): sobre la Y del
-   dedo se suma un sesgo hacia abajo que crece con el avance
-   del pase (rampa suave: ~0° al enganchar, ~30° a mitad de
-   pase) hasta dejar la línea de doblez inclinada ~30°
-   respecto a la vertical — la esquina SUPERIOR del lado que
-   voltea avanza en diagonal hacia el lado del arrastre y se
-   nota que es un cambio de página. Vale en AMBOS sentidos y
-   nazca el gesto donde nazca (centro o borde). Al cancelar,
-   el avance retrocede y el sesgo se deshace con el retorno.
-   CONO DE SEGURIDAD: la inclinación total (sesgo + desvío del
-   dedo) nunca pasa de ~50° — el pliegue jamás se acerca a lo
-   horizontal (volteo vertical prohibido), ni siquiera si el
-   dedo se desvía mucho en vertical con poco avance. */
+   PRECISIÓN r30 (Sergio, con su captura photo-86 — MANDA sobre
+   la diagonal de 30° de r24): en los pases horizontales la
+   inclinación de la línea de doblez tiene un TOPE DURO de 15°
+   (el de su captura, medido en 14,7°) y los movimientos hacia
+   arriba o abajo aparecen SOLO si el dedo se mueve de verdad
+   en esas direcciones, 1:1. Por eso:
+   - el sesgo automático de r24 DESAPARECE: sin Δy del dedo, la
+     esquina se queda a la altura donde nació el pase y el
+     pliegue va vertical;
+   - el Δy real del dedo queda amarrado al tope: |F.y − K.y| ≤
+     recorrido · tan(15°) — el pliegue jamás se inclina más que
+     lo de la captura, deambule lo que deambule el dedo;
+   - la punta nunca cruza al otro lado del ancla ni sale del
+     área extendida: un arrastre en círculo solo mece el doblez
+     dentro de esos límites, sin voltereta (reporte de Sergio:
+     «cuando hago un movimiento como de círculo con el dedo
+     hace como una voltereta de la página; no puede hacer eso»).
+   El resto de la página acompaña como siempre: la geometría
+   de doblez verdadero no cambia, solo el punto efectivo. */
 function epubCurlEdgeFrame() {
   const C = epubCurl;
   if (!C) return;
   const K = { x: C.kx, y: C.ky };
   const F = { x: C.fx, y: C.fy };
+  if (C.dir > 0) F.x = Math.min(F.x, K.x + 24);
+  else F.x = Math.max(F.x, K.x - 24);
+  F.x = Math.max(-90, Math.min(C.W + 90, F.x));
+  F.y = Math.max(-90, Math.min(C.H + 90, F.y));
   const run = Math.abs(F.x - K.x);
-  /* La rampa se mide por el RECORRIDO desde el nacimiento del
-     gesto (x0): la inclinación «va adquiriendo» a lo largo del
-     arrastre — 0° al enganchar, ~30° tras recorrer ~1/3 de
-     página — nazca el pase en el centro o en el borde. */
-  const travel = Math.abs(F.x - C.x0);
-  const p = Math.min(1, travel / (C.W * 0.3));
-  const ease = p * p * (3 - 2 * p);
-  F.y += Math.tan(Math.PI / 6) * run * ease;
-  const maxDy = run * 1.19; /* ~50°: el pliegue nunca se tumba */
+  const maxDy = run * Math.tan(EPUB_EDGE_TILT_MAX * Math.PI / 180);
   if (F.y > K.y + maxDy) F.y = K.y + maxDy;
   else if (F.y < K.y - maxDy) F.y = K.y - maxDy;
   epubCurlFoldFrame(K, F);
