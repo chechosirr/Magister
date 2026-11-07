@@ -945,10 +945,31 @@ async function chatFinalize() {
   if (view.name === "chat") render();
 }
 
+let chatOpening = false;
+/* El saludo existe DESDE que el cliente entra al chat (orden de
+   Sergio): al abrir —con cuenta, directo; el visitante, al tocar
+   «Empezar chat»— la conversación se crea en el servidor con su
+   saludo ya puesto, sin esperar a su primer mensaje. */
+async function chatEnsureOpen() {
+  if (chatOpening || chatClosed) return;
+  if (chatMode() === "anon" && (!chatAnonStarted || chatAnonConv)) { chatPoll(); return; }
+  chatOpening = true;
+  try {
+    if (chatMode() === "account") {
+      await chatFetch("/open", { method: "POST", body: JSON.stringify({ intent: chatIntent }) });
+    } else {
+      const r = await chatFetch("/open", { method: "POST", body: JSON.stringify({ name: chatLoad(CHAT_NAME_KEY), contact: chatLoad(CHAT_CONTACT_KEY), intent: "ayuda" }) });
+      if (r && r.conv) { chatAnonConv = r.conv; chatSave(CHAT_CONV_KEY, chatAnonConv); }
+    }
+  } catch { /* sin red o sesión caída: el sondeo de abajo reintenta o expulsa */ }
+  chatOpening = false;
+  chatPoll();
+}
+
 function chatStart() {
   if (chatClosed) chatResetForNew();
   chatScrollBottom();
-  chatPoll();
+  chatEnsureOpen();
   if (!chatPollTimer) chatPollTimer = window.setInterval(chatPoll, 4000);
   const first = document.querySelector(".chatview input, .chatview textarea");
   if (first && chatMode() === "account") first.focus({ preventScroll: true });
@@ -969,8 +990,8 @@ function openChat(intent) {
 
 /* Pantalla de datos del visitante (igual que la de NEXO): solo pide
    nombre y contacto; al tocar «Empezar chat» aparece la conversación
-   normal y el primer mensaje que escriba crea la conversación en el
-   servidor, con su saludo automático sin nombre. */
+   y esta se crea EN ESE MOMENTO en el servidor, con su saludo
+   automático sin nombre ya puesto. */
 function chatStartAnon(form) {
   const name = form.querySelector("#chat-name").value.trim();
   const contact = form.querySelector("#chat-contact").value.trim();
@@ -979,6 +1000,7 @@ function chatStartAnon(form) {
   chatSave(CHAT_CONTACT_KEY, contact);
   chatAnonStarted = true;
   render();
+  chatEnsureOpen();
 }
 
 async function chatSendMessage(form) {
