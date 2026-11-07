@@ -36,7 +36,7 @@
    guardada en el navegador.
    --------------------------------------------------------------- */
 const MAGISTER_API_BASE = "https://puente.ragerservices.net/magister";
-const MAGISTER_API_ENABLED = false;
+const MAGISTER_API_ENABLED = true;
 
 const TOKEN_KEY = "magister-token";
 const PREVIEW_CHAPTERS = 1;
@@ -115,9 +115,11 @@ const api = {
 /* ------------------------------------------------------------ estado */
 
 let token = loadToken();
-let user = null;               // {id, name, email, subscribed} cuando hay sesión
+let user = null;               // {id, name, email, subscribed, admin} cuando hay sesión
 let libraryEntries = [];       // biblioteca personal (del servicio)
-let view = { name: "home" };   // home | library | categories | search | account | detail | reader
+let view = { name: "home" };   // home | library | categories | search | account | detail | reader | chat
+let viewHistory = [];          // pila de vistas para la flecha de volver del header
+let catalogHidden = new Set(); // ids pausados/eliminados en el servicio (no se muestran al público)
 let libOnlyFavorites = false;
 let authNotice = false;        // aviso de «servicio en activación» tras intentar entrar en modo muestra
 let authError = "";
@@ -167,7 +169,7 @@ function coverHtml(book, large = false) {
 
 function bookCardHtml(book) {
   return `<button type="button" class="book-card" data-action="open-book" data-id="${book.id}" aria-label="Ver ${esc(book.title)} de ${esc(book.author)}">
-    ${coverHtml(book)}
+    <span class="cover-box">${coverHtml(book)}</span>
     <p class="bt">${esc(book.title)}</p>
     <p class="ba">${esc(book.author)}</p>
     ${book.hasContent ? "" : `<p class="soon">Próximamente</p>`}
@@ -239,7 +241,7 @@ function categoriesHtml() {
   const active = view.category;
   if (!active) {
     const byCat = new Map(CATEGORIES.map((c) => [c, []]));
-    for (const b of BOOKS) if (byCat.has(b.category)) byCat.get(b.category).push(b);
+    for (const b of visibleBooks()) if (byCat.has(b.category)) byCat.get(b.category).push(b);
     return `<div class="view-pad">
       <h1 class="view-title center">Categorías</h1>
       <div>${CATEGORIES.map((name) => {
@@ -256,10 +258,9 @@ function categoriesHtml() {
       }).join("")}</div>
     </div>`;
   }
-  const shown = BOOKS.filter((b) => b.category === active);
+  const shown = visibleBooks().filter((b) => b.category === active);
   return `<div class="view-pad">
     <h1 class="view-title center">Categorías</h1>
-    <button type="button" class="back-arrow" data-action="back-categories" aria-label="Volver a todas las categorías">←</button>
     <h2 class="font-display" style="margin:12px 0 0;font-size:20px;font-weight:700">${esc(active)}</h2>
     ${shown.length === 0
       ? `<p class="small dim mt-4">Aún no hay libros del catálogo en esta categoría.</p>`
@@ -273,7 +274,7 @@ function searchHtml() {
   if (query.trim() === "") {
     body = `<p class="small dim mt-6" style="margin-top:24px">Escribe el título de un libro o el nombre de un autor para buscar en todo el catálogo.</p>`;
   } else {
-    const results = BOOKS.filter((b) => bookMatches(b, query));
+    const results = visibleBooks().filter((b) => bookMatches(b, query));
     body = `<p class="small dim" style="margin-top:24px">${results.length} ${results.length === 1 ? "resultado" : "resultados"} para «${esc(query)}»</p>` +
       (results.length === 0
         ? `<div class="card dashed mt-4">
@@ -295,7 +296,6 @@ function detailGateHtml() {
       <h1 class="font-display" style="margin:0;font-size:20px;font-weight:900">Necesitas tu cuenta para abrir este libro</h1>
       <p class="small dim" style="margin:8px 0 0;line-height:1.625">Los libros de Magister se abren solo con cuenta. Inicia sesión para leer la muestra gratuita de cada libro.</p>
       <button type="button" class="btn-primary block mt-4" data-action="require-auth">Iniciar sesión</button>
-      <button type="button" class="back-link mt-3" data-action="goto-home">← Volver</button>
     </section>
   </div>`;
 }
@@ -310,7 +310,6 @@ function detailHtml() {
   if (detailState === "error" || !detailData) {
     return `<div style="padding-top:40px">
       <p role="alert" class="small">${esc(detailError || "Libro no encontrado.")}</p>
-      <button type="button" class="back-link mt-3" data-action="goto-home">← Volver</button>
     </div>`;
   }
   const d = detailData;
@@ -319,7 +318,6 @@ function detailHtml() {
     ? `Seguir en el capítulo ${d.currentChapter + 1}`
     : d.subscribed ? "Leer ahora" : "Leer la muestra gratuita";
   return `<div class="view-pad">
-    <button type="button" class="back-link" data-action="goto-home">← Volver</button>
     <div class="detail-flex">
       <div class="detail-cover">${coverHtml(b, true)}</div>
       <div style="min-width:0">
@@ -459,6 +457,7 @@ function accountHtml() {
           ${authError ? `<p role="alert" class="form-error">${esc(authError)}</p>` : ""}
           ${authNotice ? `<p class="form-note">El servicio de cuentas de Magister se está activando en nuestro servidor propio. Muy pronto podrás entrar con tu cuenta desde aquí; mientras tanto, el catálogo completo ya se puede explorar.</p>` : ""}
           <button type="submit" class="btn-primary block" ${authBusy ? "disabled" : ""}>${authBusy ? "Un momento…" : "Entrar a tu biblioteca"}</button>
+          <button type="button" class="forgot-link" data-action="open-help">Olvidé mi contraseña</button>
         </form>
       </section>
     </div>`;
@@ -506,41 +505,62 @@ const TABS = [
 ];
 
 const root = document.getElementById("root");
-let headerEl, navEl, mainEl;
+let headerEl, navEl, mainEl, menuEl;
 
 function buildShell() {
   root.innerHTML = `
     ${splashActive ? `<div class="prepaint" aria-hidden="true"><img src="${HERO_IMG}" alt="" loading="eager" decoding="async"></div>` : ""}
     <header id="site-header">
-      <div class="header-inner"><span id="magister-logo" class="metallic-text">MAGISTER</span></div>
-      <nav id="main-nav" aria-label="Navegación principal"></nav>
+      <div class="header-inner">
+        <button type="button" id="hdr-back" data-action="back" aria-label="Volver" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></button>
+        <span id="magister-logo" class="metallic-text">MAGISTER</span>
+        <button type="button" id="hdr-menu-btn" data-action="menu-open" aria-label="Abrir menú"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></svg></button>
+      </div>
     </header>
+    <div id="menu-scrim" data-action="menu-close" hidden></div>
+    <aside id="side-menu" aria-label="Menú">
+      <button type="button" class="menu-close" data-action="menu-close" aria-label="Cerrar menú">×</button>
+      <nav id="menu-items"></nav>
+    </aside>
     <main id="main"></main>
+    <button type="button" id="help-fab" data-action="open-help" hidden>Ayuda</button>
     ${splashActive ? `<div id="splash" role="button" aria-label="Saltar la apertura de Magister">
       <div id="splash-title" class="metallic-text">MAGISTER</div>
       <p class="splash-tag">Tu biblioteca de clásicos.</p>
     </div>` : ""}`;
   headerEl = root.querySelector("#site-header");
-  navEl = root.querySelector("#main-nav");
+  navEl = root.querySelector("#hdr-menu-btn");
+  menuEl = root.querySelector("#menu-items");
   mainEl = root.querySelector("#main");
 }
 
 function render() {
   const inReader = view.name === "reader";
-  headerEl.classList.toggle("hidden", inReader);
+  const inChat = view.name === "chat";
+  headerEl.classList.toggle("hidden", inReader || inChat);
   headerEl.classList.toggle("absolute", view.name === "home" && !inReader);
-  headerEl.classList.toggle("sticky", view.name !== "home" && !inReader);
+  headerEl.classList.toggle("sticky", view.name !== "home" && !inReader && !inChat);
   if (splashActive && !revealed) headerEl.classList.add("invisible");
   else headerEl.classList.remove("invisible");
 
-  navEl.innerHTML = TABS.map((tab) => {
-    const activeName = view.name === "categories" ? "categories" : view.name;
-    const active = activeName === tab.name;
-    return `<button type="button" data-action="nav" data-tab="${tab.name}" class="${active ? "active" : ""}">${tab.label}</button>`;
-  }).join("");
-  navEl.style.display = revealed ? "" : "none";
+  // Menú desplegable (☰ a la derecha del header): la navegación ya
+  // no va en una fila de botones bajo el nombre. El contenido depende
+  // de la sesión (ver menuHtml()).
+  if (menuEl) menuEl.innerHTML = menuHtml();
+  closeMenu();
+  const backBtn = document.getElementById("hdr-back");
+  // La flecha de volver SOLO aparece dentro de una sección: en el
+  // inicio NUNCA (ni en la portada del administrador), aunque el
+  // historial interno tenga entradas. Dentro de una sección siempre
+  // se muestra y al tocarla se vuelve a la vista inmediatamente
+  // anterior (goBack; sin historial, al inicio).
+  const onHome = view.name === "home" || view.name === "admin-home";
+  if (backBtn) backBtn.hidden = onHome || inReader || inChat;
 
-  mainEl.className = view.name === "home" ? "" : "wrap";
+  const fab = document.getElementById("help-fab");
+  if (fab) fab.hidden = !(revealed && view.name === "home");
+
+  mainEl.className = view.name === "home" || inChat ? "" : "wrap";
   let html = "";
   if (view.name === "home") html = escaparateHtml();
   else if (view.name === "library") html = token ? libraryHtml() : `<p class="dim" style="padding-top:40px">Inicia sesión para ver tu biblioteca.</p>`;
@@ -549,23 +569,135 @@ function render() {
   else if (view.name === "detail") html = detailHtml();
   else if (view.name === "reader") html = readerHtml();
   else if (view.name === "account") html = accountHtml();
-  if (view.name !== "home") {
+  else if (view.name === "admin-home") html = adminHomeHtml();
+  else if (view.name === "chat") html = chatViewHtml();
+  if (view.name !== "home" && view.name !== "chat" && view.name !== "admin-home") {
     html += `<footer class="site-footer"><p>Catálogo en preparación: los libros se servirán desde el servidor propio de Magister. Las portadas se muestran como muestra visual del catálogo mientras se carga el contenido.</p></footer>`;
   }
   mainEl.innerHTML = html;
   attachDragRows();
+  enhancePasswordEyes(mainEl);
 }
 
-function go(next) {
-  view = next;
+
+/* ------------------------------------------------------ menú ☰ */
+
+/* Contenido del menú desplegable según la sesión:
+   - Administrador: sus funciones de la consola (Libros · Usuarios ·
+     Top 100 · Registro de suscripciones · Ajustes de cuenta · Chat),
+     que viven en el servicio y se abren con el traspaso de sesión.
+   - Sin sesión o sesión normal: la navegación de la página.
+   - Con cualquier sesión iniciada, al final: «Cerrar sesión» en rojo. */
+const CONSOLE_BASE = "https://puente.ragerservices.net/magister/chat/admin";
+function menuHtml() {
+  const items = [];
+  if (user && user.admin) {
+    const t = encodeURIComponent(token || "");
+    const link = (label, path) => `<a class="mi" href="${CONSOLE_BASE}${path}#t=${t}">${label}</a>`;
+    items.push(link("Libros", "/libros"));
+    items.push(link("Usuarios", "/usuarios"));
+    items.push(link("Top 100", "/top"));
+    items.push(link("Registro de suscripciones", "/suscripciones"));
+    items.push(link("Ajustes de cuenta", "/ajustes"));
+    items.push(link("Chat", "/chat"));
+  } else {
+    const cur = view.name;
+    const tab = (name, label) => `<button type="button" class="mi${cur === name ? " active" : ""}" data-action="nav" data-tab="${name}">${label}</button>`;
+    items.push(tab("home", "Inicio"));
+    items.push(tab("categories", "Explorar"));
+    items.push(tab("library", "Mi biblioteca"));
+    items.push(`<button type="button" class="mi" data-action="open-chat">Pídenos tu libro</button>`);
+    items.push(tab("account", "Mi cuenta"));
+  }
+  if (token) items.push(`<button type="button" class="mi logout" data-action="logout">Cerrar sesión</button>`);
+  return items.join("");
+}
+
+function openMenu() {
+  const m = document.getElementById("side-menu");
+  const sc = document.getElementById("menu-scrim");
+  if (m) m.classList.add("open");
+  if (sc) sc.hidden = false;
+}
+function closeMenu() {
+  const m = document.getElementById("side-menu");
+  const sc = document.getElementById("menu-scrim");
+  if (m) m.classList.remove("open");
+  if (sc) sc.hidden = true;
+}
+
+/* ------------------------------------------- volver (historial) */
+
+function goBack() {
+  const prev = viewHistory.pop();
+  if (prev) { view = prev; render(); window.scrollTo(0, 0); }
+  else { viewHistory = []; view = { name: "home" }; render(); window.scrollTo(0, 0); }
+}
+
+/* --------------------------------------- catálogo según servicio */
+
+function visibleBooks() {
+  return BOOKS.filter((b) => !catalogHidden.has(String(b.id)));
+}
+
+async function refreshCatalogState() {
+  if (!MAGISTER_API_ENABLED) return;
+  try {
+    const j = await apiCall("/chat/catalogo-estado");
+    const estados = (j && j.estados) || {};
+    catalogHidden = new Set(Object.keys(estados).filter((k) => estados[k] === "pausado" || estados[k] === "eliminado"));
+    render();
+  } catch { /* sin conexión: se muestra el catálogo completo */ }
+}
+
+/* --------------------------------------------- ojos de contraseña */
+
+const EYE_ON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const EYE_OFF_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+function enhancePasswordEyes(scope) {
+  if (!scope) return;
+  scope.querySelectorAll('input[type="password"]').forEach((inp) => {
+    if (inp.dataset.eye) return;
+    inp.dataset.eye = "1";
+    const wrap = document.createElement("span");
+    wrap.className = "pwwrap";
+    inp.parentNode.insertBefore(wrap, inp);
+    wrap.appendChild(inp);
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "pweye";
+    b.setAttribute("aria-label", "Mostrar u ocultar la contraseña");
+    b.innerHTML = EYE_ON_SVG;
+    b.addEventListener("click", () => {
+      const show = inp.type === "password";
+      inp.type = show ? "text" : "password";
+      b.innerHTML = show ? EYE_OFF_SVG : EYE_ON_SVG;
+    });
+    wrap.appendChild(b);
+  });
+}
+
+function go(next, opts) {
+  if (next.name !== "chat") chatStopPolling();
+  if (opts && opts.replace) {
+    view = next;
+  } else if (next.name === "home" || next.name === "admin-home") {
+    viewHistory = [];
+    view = next;
+  } else {
+    viewHistory.push(view);
+    view = next;
+  }
   render();
   window.scrollTo(0, 0);
+  if (next.name === "chat") chatStart();
 }
 
 /* Sin cuenta no se abre ningún libro: tocar uno lleva al lector a
    «Mi cuenta» para iniciar sesión (el servidor también lo exigirá). */
 function openBook(bookId) {
   if (!token) { go({ name: "account" }); return; }
+  if (MAGISTER_API_ENABLED) apiCall("/chat/lectura", { method: "POST", body: { id: bookId } }).catch(() => {});
   detailState = "loading"; detailData = null; detailError = "";
   go({ name: "detail", bookId });
   api.getBookDetail(token, bookId).then((d) => {
@@ -593,8 +725,299 @@ async function refreshSession() {
     user = me.user;
     const lib = await api.myLibrary(token);
     libraryEntries = lib.entries || [];
+    render();
+    maybeShowAdminWelcome();
   } catch { /* sin conexión con el servicio: se sigue en modo muestra */ }
 }
+
+/* ------------------------------------------------ bienvenida admin */
+
+/* Experiencia de administrador (solo cuentas con admin=true): la
+   página «Bienvenido, señor.» es su PÁGINA DE INICIO (vista
+   admin-home), no una pantalla pasajera: al iniciar sesión — o al
+   restaurarse la sesión — con una cuenta admin, la app aterriza en
+   esa vista limpia, con la cabecera y su navegación de siempre
+   (donde están «Chat» y «Cuentas»). Las cuentas normales nunca la
+   ven: entran al escaparate como siempre. */
+let adminWelcomeDeferred = false;
+
+function adminHomeHtml() {
+  // Pantalla estática (orden de Sergio): solo «Bienvenido, señor.»
+  // en grande, centrado; sin textos descriptivos ni contenido extra.
+  return `<div class="admin-home"><p class="admin-welcome-title">Bienvenido, señor.</p></div>`;
+}
+
+function maybeShowAdminWelcome() {
+  if (!user || !user.admin) return;
+  if (splashActive && !revealed) { adminWelcomeDeferred = true; return; }
+  if (view.name !== "admin-home") go({ name: "admin-home" }, { replace: true });
+}
+
+function closeAdminWelcome() {
+  const el = document.getElementById("admin-welcome");
+  if (el) el.remove();
+}
+
+/* ------------------------------------------------------------ chat */
+
+/* Chat interno de Magister (servicio propio en el VPS, rutas
+   /magister/chat/... tras MAGISTER_API_BASE). Pantalla completa con
+   estructura de app de mensajería y DOS entradas (órdenes de Sergio):
+
+   - «Pídenos tu libro» (botón del header): SOLO con cuenta. La
+     conversación es la de la cuenta y al crearla llega el saludo
+     automático con el nombre del perfil: «Hola, {nombre}, ¿Qué libro
+     te gustaría que agregáramos para ti?»
+   - «Ayuda» (botón fijo abajo a la derecha, solo en Inicio): entra
+     cualquiera, con cuenta o sin ella. Sin cuenta, el visitante deja
+     su nombre (flujo libre de la v1, conversación en su navegador).
+     El saludo automático de esta entrada NO lleva nombre: «Hola,
+     ¿cómo podemos ayudarte hoy?»
+
+   Una sola conversación por cuenta; sondeo corto (sin websockets). */
+const CHAT_CONV_KEY = "magister-chat-conv";
+const CHAT_NAME_KEY = "magister-chat-name";
+const CHAT_CONTACT_KEY = "magister-chat-contact";
+
+const CHAT_EXPLAIN = {
+  libro: "¿No encuentras un libro en la biblioteca? Pídelo aquí: dinos cuál buscas y lo subimos para ti. También puedes escribirnos por cualquier otra cosa.",
+  ayuda: "Escríbenos aquí lo que necesites: te respondemos en cuanto podamos.",
+};
+
+function chatLoad(key) { try { return window.localStorage.getItem(key) || ""; } catch { return ""; } }
+function chatSave(key, val) { try { if (val) window.localStorage.setItem(key, val); else window.localStorage.removeItem(key); } catch { /* sin almacenamiento */ } }
+
+let chatIntent = "libro";        // "libro" | "ayuda": última entrada usada
+let chatAnonConv = chatLoad(CHAT_CONV_KEY);
+let chatAnonStarted = !!chatLoad(CHAT_NAME_KEY);
+let chatAcctMsgs = [];           // mensajes de la conversación de la cuenta
+let chatAnonMsgs = [];           // mensajes de la conversación anónima
+let chatPollTimer = null;
+let chatSending = false;
+let chatClosed = false;          // true tras «Finalizar chat» (cierre visible)
+let chatReturn = { name: "home" };
+
+function chatMode() { return token ? "account" : "anon"; }
+function chatMsgs() { return chatMode() === "account" ? chatAcctMsgs : chatAnonMsgs; }
+function chatSetMsgs(list) { if (chatMode() === "account") chatAcctMsgs = list; else chatAnonMsgs = list; }
+
+async function chatFetch(path, opts = {}) {
+  const res = await fetch(MAGISTER_API_BASE + "/chat" + path, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(opts.headers || {}),
+    },
+  });
+  let data = null;
+  try { data = await res.json(); } catch { /* respuesta sin cuerpo */ }
+  if (!res.ok) {
+    const err = new Error((data && data.error) || `Error del chat (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+function chatTime(ts) {
+  try { return new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; }
+}
+
+function chatMsgsHtml() {
+  const msgs = chatMsgs();
+  if (msgs.length === 0) {
+    return `<p class="chat-empty">${chatMode() === "anon" && !chatAnonConv ? "Escribe tu mensaje y te respondemos en este mismo chat." : "Cargando la conversación…"}</p>`;
+  }
+  return msgs.map((m) => {
+    const mine = m.f === "v";
+    return `<div class="chat-msg ${mine ? "mine" : "theirs"}">
+      <div class="chat-bubble">${esc(m.t)}</div>
+      <p class="chat-meta">${mine ? "Tú" : "Magister"} · ${chatTime(m.ts)}</p>
+    </div>`;
+  }).join("");
+}
+
+function chatViewHtml() {
+  const anonNeedsIntro = chatMode() === "anon" && !chatAnonConv && !chatAnonStarted;
+  return `<div class="chatview">
+    <div class="chatview-head">
+      <button type="button" class="chatview-back" data-action="chat-back" aria-label="Volver">←</button>
+      <div class="chatview-head-text">
+        <p class="chatview-title">Magister</p>
+        <p class="chatview-sub">${chatIntent === "libro" ? "Pídenos tu libro" : "Ayuda"}</p>
+      </div>
+      ${!anonNeedsIntro && !chatClosed ? `<button type="button" class="chatview-endbtn" data-action="chat-finalize">Finalizar chat</button>` : ""}
+    </div>
+    <p class="chatview-welcome">${esc(CHAT_EXPLAIN[chatIntent])}</p>
+    ${anonNeedsIntro ? `<form id="chat-intro" class="chat-intro form-stack">
+      <div class="field">
+        <label for="chat-name">¿Cómo te llamas?</label>
+        <input id="chat-name" type="text" required maxlength="60" autocomplete="name" placeholder="Tu nombre" value="${esc(chatLoad(CHAT_NAME_KEY))}">
+      </div>
+      <div class="field">
+        <label for="chat-contact">Contacto (opcional: WhatsApp o correo)</label>
+        <input id="chat-contact" type="text" maxlength="120" autocomplete="email" placeholder="Opcional" value="${esc(chatLoad(CHAT_CONTACT_KEY))}">
+      </div>
+      <p class="chat-error" role="alert" hidden></p>
+      <button type="submit" class="btn-primary block">Empezar chat</button>
+    </form>` : `<div id="chat-msgs" class="chatview-msgs" aria-live="polite">${chatMsgsHtml()}</div>
+    <p class="chat-error" role="alert" hidden></p>
+    ${chatClosed ? `<div class="chat-closed">
+      <p class="chat-closed-title">Chat finalizado. Gracias por escribirnos.</p>
+      <p class="chat-closed-sub">Si necesitas algo más, puedes empezar un chat nuevo.</p>
+      <button type="button" class="btn-primary" data-action="chat-new">Iniciar un chat nuevo</button>
+    </div>` : `<form id="chat-form" class="chatview-composer">
+      <textarea id="chat-text" rows="1" maxlength="1000" placeholder="Escribe un mensaje…" aria-label="Escribe un mensaje"></textarea>
+      <button type="submit" class="chat-send" aria-label="Enviar mensaje">➤</button>
+    </form>`}`}
+  </div>`;
+}
+
+function chatScrollBottom() {
+  const el = document.getElementById("chat-msgs");
+  if (el) el.scrollTop = el.scrollHeight;
+}
+
+function chatShowError(msg) {
+  const err = document.querySelector(".chatview .chat-error");
+  if (err) { err.textContent = msg || ""; err.hidden = !msg; }
+}
+
+async function chatPoll() {
+  if (chatClosed) return;
+  const mode = chatMode();
+  if (mode === "anon" && !chatAnonConv) return;
+  try {
+    const after = chatMsgs().length;
+    const q = mode === "account"
+      ? `/poll?after=${after}&intent=${chatIntent}`
+      : `/poll?conv=${encodeURIComponent(chatAnonConv)}&after=${after}`;
+    const data = await chatFetch(q);
+    if (data.messages && data.messages.length > 0) {
+      chatSetMsgs(chatMsgs().concat(data.messages));
+      const box = document.getElementById("chat-msgs");
+      if (box) { box.innerHTML = chatMsgsHtml(); chatScrollBottom(); }
+    }
+    if (data.finalizada) {
+      chatClosed = true;
+      chatStopPolling();
+      if (view.name === "chat") render();
+    }
+  } catch (e) {
+    if (e.status === 401 && mode === "account") {
+      // La sesión ya no vale: fuera del chat y a «Mi cuenta».
+      chatStopPolling();
+      saveToken(null); token = null; user = null; chatAcctMsgs = [];
+      go({ name: "account" });
+      return;
+    }
+    if (mode === "anon" && String(e.message || "").includes("no encontrada")) {
+      // La conversación anónima ya no existe en el servidor: de cero.
+      chatAnonConv = ""; chatAnonMsgs = []; chatSave(CHAT_CONV_KEY, "");
+      if (view.name === "chat") render();
+    }
+    /* otros errores de red: se reintenta en el siguiente sondeo */
+  }
+}
+
+function chatResetForNew() {
+  chatClosed = false;
+  if (chatMode() === "account") { chatAcctMsgs = []; }
+  else { chatAnonConv = ""; chatAnonMsgs = []; chatAnonStarted = false; chatSave(CHAT_CONV_KEY, ""); }
+}
+
+/* «Finalizar chat» (orden de Sergio, todas las páginas): la
+   conversación queda marcada como finalizada en el servidor (con
+   cuenta, se archiva y la siguiente será nueva con su saludo) y el
+   cliente ve el cierre; el historial no se borra del panel. */
+async function chatFinalize() {
+  try {
+    if (chatMode() === "account") await chatFetch("/finalizar", { method: "POST", body: "{}" });
+    else if (chatAnonConv) await chatFetch("/finalizar", { method: "POST", body: JSON.stringify({ conv: chatAnonConv }) });
+  } catch (e) { /* si falla la red, se cierra localmente igual */ }
+  chatClosed = true;
+  chatStopPolling();
+  if (view.name === "chat") render();
+}
+
+function chatStart() {
+  if (chatClosed) chatResetForNew();
+  chatScrollBottom();
+  chatPoll();
+  if (!chatPollTimer) chatPollTimer = window.setInterval(chatPoll, 4000);
+  const first = document.querySelector(".chatview input, .chatview textarea");
+  if (first && chatMode() === "account") first.focus({ preventScroll: true });
+}
+
+function chatStopPolling() {
+  if (chatPollTimer) { window.clearInterval(chatPollTimer); chatPollTimer = null; }
+}
+
+/* Entrada «Pídenos tu libro»: solo con cuenta (sin sesión → «Mi cuenta»).
+   Entrada «Ayuda»: cualquiera, con cuenta o sin ella. */
+function openChat(intent) {
+  if (intent === "libro" && !token) { go({ name: "account" }); return; }
+  chatIntent = intent;
+  if (view.name !== "chat") chatReturn = { ...view };
+  go({ name: "chat" });
+}
+
+/* Pantalla de datos del visitante (igual que la de NEXO): solo pide
+   nombre y contacto; al tocar «Empezar chat» aparece la conversación
+   normal y el primer mensaje que escriba crea la conversación en el
+   servidor, con su saludo automático sin nombre. */
+function chatStartAnon(form) {
+  const name = form.querySelector("#chat-name").value.trim();
+  const contact = form.querySelector("#chat-contact").value.trim();
+  if (!name) { chatShowError("Dinos tu nombre para poder responderte."); return; }
+  chatSave(CHAT_NAME_KEY, name);
+  chatSave(CHAT_CONTACT_KEY, contact);
+  chatAnonStarted = true;
+  render();
+}
+
+async function chatSendMessage(form) {
+  if (chatSending) return;
+  const input = form.querySelector("#chat-text");
+  const text = input.value.trim();
+  if (!text) return;
+  chatSending = true; chatShowError("");
+  try {
+    let body;
+    if (chatMode() === "account") body = { text, intent: chatIntent };
+    else if (chatAnonConv) body = { conv: chatAnonConv, text };
+    else body = { name: chatLoad(CHAT_NAME_KEY), contact: chatLoad(CHAT_CONTACT_KEY), text, intent: "ayuda" };
+    const r = await chatFetch("/send", { method: "POST", body: JSON.stringify(body) });
+    if (chatMode() === "anon" && !chatAnonConv && r && r.conv) {
+      chatAnonConv = r.conv;
+      chatSave(CHAT_CONV_KEY, chatAnonConv);
+    }
+    input.value = "";
+    input.style.height = "auto";
+    await chatPoll();
+  } catch (e) {
+    if (e.status === 409) {
+      // El servidor ya la tiene por finalizada: cierre local.
+      chatClosed = true; chatStopPolling();
+      if (view.name === "chat") render();
+      return;
+    }
+    chatShowError(`No se pudo enviar: ${errorText(e)}`);
+  } finally { chatSending = false; }
+}
+
+document.addEventListener("submit", (e) => {
+  if (e.target.id === "chat-intro") { e.preventDefault(); chatStartAnon(e.target); }
+  else if (e.target.id === "chat-form") { e.preventDefault(); chatSendMessage(e.target); }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && e.target.id === "chat-text") {
+    e.preventDefault();
+    const form = document.getElementById("chat-form");
+    if (form) chatSendMessage(form);
+  }
+});
 
 /* ------------------------------------------------- filas deslizables */
 
@@ -627,28 +1050,40 @@ function attachDragRows() {
 document.addEventListener("click", async (e) => {
   const splash = document.getElementById("splash");
   if (splash && e.target.closest("#splash")) { finishSplash(); return; }
+  if (e.target.closest("#side-menu a")) closeMenu();
   const el = e.target.closest("[data-action]");
   if (!el) return;
+  if (el.closest("#side-menu")) closeMenu();
   const action = el.dataset.action;
   const id = Number(el.dataset.id || 0);
-  if (action === "nav") {
+  if (action === "menu-open") openMenu();
+  else if (action === "menu-close") closeMenu();
+  else if (action === "back") goBack();
+  else if (action === "nav") {
     const tab = el.dataset.tab;
-    if ((tab === "library" || tab === "account") && !token) { go({ name: "account" }); return; }
-    if (tab === "categories") go({ name: "categories" });
-    else if (tab === "library") go({ name: "library" });
-    else if (tab === "account") go({ name: "account" });
+    viewHistory = [];
+    if ((tab === "library" || tab === "account") && !token) { go({ name: "account" }, { replace: true }); return; }
+    if (tab === "categories") go({ name: "categories" }, { replace: true });
+    else if (tab === "library") go({ name: "library" }, { replace: true });
+    else if (tab === "account") go({ name: "account" }, { replace: true });
     else go({ name: "home" });
   }
   else if (action === "open-book") openBook(id);
   else if (action === "select-category") go({ name: "categories", category: el.dataset.cat });
-  else if (action === "back-categories") go({ name: "categories" });
+  else if (action === "back-categories") goBack();
   else if (action === "goto-categories") go({ name: "categories" });
-  else if (action === "goto-home") go({ name: "home" });
+  else if (action === "open-chat") openChat("libro");
+  else if (action === "open-help") openChat("ayuda");
+  else if (action === "admin-welcome-close") closeAdminWelcome();
+  else if (action === "chat-back") go(chatReturn.name ? chatReturn : { name: "home" });
+  else if (action === "chat-finalize") chatFinalize();
+  else if (action === "chat-new") { chatResetForNew(); render(); chatStart(); }
+  else if (action === "goto-home") { viewHistory = []; go({ name: "home" }, { replace: true }); }
   else if (action === "goto-library") go({ name: "library" });
   else if (action === "require-auth") go({ name: "account" });
   else if (action === "subscribe") go({ name: "account" });
   else if (action === "read") openChapter(id, Number(el.dataset.ch || 0));
-  else if (action === "reader-exit") go({ name: "detail", bookId: view.bookId });
+  else if (action === "reader-exit") goBack();
   else if (action === "reader-chapter") {
     const n = Number(el.dataset.ch);
     if (chapterData && n >= 0 && n < chapterData.chapterCount) openChapter(view.bookId, n);
@@ -670,7 +1105,9 @@ document.addEventListener("click", async (e) => {
   }
   else if (action === "logout") {
     try { await api.logout(token); } catch { /* se cierra igual en local */ }
+    closeAdminWelcome();
     saveToken(null); token = null; user = null; libraryEntries = [];
+    chatAcctMsgs = [];
     go({ name: "home" });
   }
 });
@@ -700,6 +1137,7 @@ document.addEventListener("submit", async (e) => {
       libraryEntries = lib.entries || [];
       authBusy = false;
       render(); // «Mi cuenta» pasa a mostrar el panel de la cuenta, como en el preview
+      maybeShowAdminWelcome();
     } catch (err) {
       authBusy = false; authError = errorText(err); render();
     }
@@ -731,6 +1169,7 @@ function finishSplash() {
   render();
   if (mainEl) mainEl.classList.add("page-enter");
   if (navEl) navEl.classList.add("page-enter");
+  if (adminWelcomeDeferred) { adminWelcomeDeferred = false; maybeShowAdminWelcome(); }
 }
 
 function startSplash() {
@@ -746,6 +1185,7 @@ function startSplash() {
     render();
     if (mainEl) mainEl.classList.add("page-enter");
     if (navEl) navEl.classList.add("page-enter");
+    if (adminWelcomeDeferred) { adminWelcomeDeferred = false; maybeShowAdminWelcome(); }
     later(() => { splashActive = false; try { window.sessionStorage.setItem("magister-splash-v1", "1"); } catch {} splash.remove(); const pre = root.querySelector(".prepaint"); if (pre) pre.remove(); }, 1600);
   };
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -781,3 +1221,4 @@ buildShell();
 render();
 if (splashActive) startSplash();
 refreshSession();
+refreshCatalogState();
