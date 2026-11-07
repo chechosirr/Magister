@@ -484,3 +484,686 @@ h1.view-title.center { text-align: center; }
 .chats-tag { font-size: 10.5px; font-weight: 800; border-radius: 999px; padding: 1px 8px; margin-left: 8px; background: rgba(140, 140, 160, 0.25); }
 .chats-tag.on { background: #9fd6a4; color: #12250f; }
 .chats-p { display: block; font-size: 14.5px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ================================================================
+   LECTOR EPUB (portado del preview r27 el 7-nov-2026): tarjeta del
+   libro de muestra y todo el lector; solo se usa al abrir el
+   libro de muestra. Reglas extraídas tal cual de la hoja del
+   preview para no tocar el resto de la página. */
+
+/* ------------------------------------------------ lector ePub (muestra) */
+
+/* Tarjeta de entrada en el escaparate (inicio) y en Explorar */
+.epub-sample {
+  display: flex; gap: 18px; align-items: stretch;
+  width: 100%; max-width: 1024px; margin: 0 auto;
+  padding: 22px 16px 30px;
+}
+
+.epub-sample.in-cats { padding: 4px 0 8px; margin-top: 20px; }
+
+.epub-sample-cover {
+  width: 96px; flex-shrink: 0; aspect-ratio: 2/3;
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 12px 10px; border-radius: 3px; border-left: 4px solid rgba(255,255,255,0.25);
+  background: linear-gradient(150deg, #274156, #16222e 55%, #0b0e13);
+  color: #f6efe3; box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+}
+
+.epub-sample-cover .esc-brand { margin: 0; font-size: 10px; font-weight: 900; letter-spacing: 0.22em; color: #d9dee6; }
+
+.epub-sample-cover .esc-rule { width: 40%; height: 2px; background: var(--brass); margin: 8px 0; }
+
+.epub-sample-cover .esc-title { margin: 0; font-size: 15px; font-weight: 700; line-height: 1.3; }
+
+.epub-sample-cover .esc-sub { margin: 4px 0 0; font-size: 10px; color: rgba(246,239,227,0.8); }
+
+.epub-sample-info { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+
+.epub-sample-tag { margin: 2px 0 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: var(--brass); }
+
+.epub-sample-h { margin: 6px 0 0; font-size: 21px; font-weight: 900; }
+
+.epub-sample-p { margin: 8px 0 16px; font-size: 14px; line-height: 1.6; color: var(--dim); max-width: 560px; }
+
+@media (max-width: 520px) {
+  .epub-sample { gap: 14px; }
+  .epub-sample-cover { width: 76px; }
+  .epub-sample-h { font-size: 18px; }
+  /* En pantallas estrechas el título del libro cede su sitio a las
+     herramientas del lector (Índice, letra y tema). */
+  .epub-book-title { display: none; }
+  .epub-tools button { padding: 6px 9px; font-size: 12px; }
+}
+
+/* Cáscara del lector: pantalla completa, sin header de la página */
+main.epub-main { margin: 0; max-width: none; padding: 0; }
+
+.epub-shell {
+  position: fixed; inset: 0; z-index: 40;
+  /* height explícita: la animación de entrada de <main> (page-enter)
+     lo convierte en bloque contenedor de los fixed, y como su único
+     hijo es esta cáscara (fuera de flujo) su alto es 0 — con inset:0
+     la cáscara colapsaba a 0. 100dvh la ancla a la ventana siempre. */
+  height: 100dvh;
+  display: flex; flex-direction: column;
+  background: #101014; color: #f2f2f4;
+}
+
+.epub-top {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 70;
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(20,20,23,0.94); color: #f5f5f7;
+  padding: 8px 10px; box-shadow: 0 2px 14px rgba(0,0,0,0.3);
+  transition: opacity .35s ease, transform .35s ease, visibility 0s linear 0s;
+}
+
+.epub-bottom {
+  position: absolute; bottom: 0; left: 0; right: 0; z-index: 70;
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(20,20,23,0.94); padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  box-shadow: 0 -2px 14px rgba(0,0,0,0.3);
+  transition: opacity .35s ease, transform .35s ease, visibility 0s linear 0s;
+}
+
+/* Controles ocultos (lectura inmersiva): desvanecidos y sin resto */
+.epub-shell.chrome-off .epub-top,
+.epub-shell.chrome-off .epub-bottom {
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity .35s ease, transform .35s ease, visibility 0s linear .35s;
+}
+
+.epub-shell.chrome-off .epub-top { transform: translateY(-10px); }
+
+.epub-shell.chrome-off .epub-bottom { transform: translateY(10px); }
+
+.epub-iconbtn { display: inline-flex; align-items: center; justify-content: center; }
+
+.epub-iconbtn svg { display: block; }
+
+.epub-exit {
+  flex-shrink: 0; width: 40px; height: 40px; border: none; border-radius: 999px;
+  background: transparent; color: #f5f5f7; font-size: 22px; font-weight: 600; cursor: pointer; padding: 0;
+}
+
+.epub-book-title {
+  margin: 0; font-size: 15px; font-weight: 700; line-height: 1.2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.epub-tools { margin-left: auto; display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+.epub-tools button {
+  border: 1px solid rgba(255,255,255,0.22); background: transparent; color: #f5f5f7;
+  border-radius: 999px; padding: 6px 11px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+
+.epub-stage { position: relative; flex: 1; min-height: 0; background: #101014; overflow: hidden; }
+
+.epub-viewer { position: absolute; inset: 0; }
+
+.epub-viewer iframe { border: none; }
+
+/* Lámina de gestos (r15): la entrada táctil del lector vive en el
+   DOCUMENTO PADRE, sobre el área del libro — en el iPhone la
+   entrada sobre el iframe de epub.js no llegaba a ningún
+   manejador. Es el elemento que recibe el toque en el centro del
+   libro en lectura. Auditoría de capas sobre el libro: esta
+   lámina (interactiva, z 20) < pliegue (visual, pointer-events:
+   none, z 30) < aviso de carga (pointer-events:none, z 65) <
+   barras (z 70; con chrome-off tampoco reciben toques) < tarjetas
+   (z 75/80, solo existen para el tacto cuando están visibles:
+   hidden = display:none). Con la clase .off la lámina se retira
+   (modo selección: el tacto va directo al iframe). */
+.epub-sheet {
+  position: absolute; inset: 0; z-index: 20;
+  background: transparent;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  /* Sin selección ni callout nativos tampoco en el documento
+     padre (r19): la lámina recibe el toque sostenido y no debe
+     dejar que Safari abra su seleccionador ni su lupa. */
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.epub-shell { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+
+.epub-shell input, .epub-shell textarea { -webkit-user-select: text; user-select: text; }
+
+.epub-sheet.off { pointer-events: none; }
+
+.epub-build {
+  flex-shrink: 0; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.12em; color: rgba(245,245,247,0.38);
+}
+
+.epub-loading {
+  position: absolute; inset: 0; z-index: 65; margin: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; color: rgba(240,240,244,0.75); text-align: center; padding: 24px;
+  /* Es solo un aviso: JAMÁS debe comerse los toques. Sin esto, si la
+     apertura falla queda una capa muerta a pantalla completa sobre
+     el escenario y el lector «no responde a nada» (visto en iOS). */
+  pointer-events: none;
+}
+
+.epub-loading[hidden] { display: none; }
+
+.epub-progress { flex: 1; min-width: 0; }
+
+.epub-progress .progress { background: rgba(255,255,255,0.16); }
+
+.epub-prog-txt { margin: 6px 0 0; text-align: center; font-size: 12px; color: rgba(245,245,247,0.7); }
+
+/* Índice de capítulos (panel sobre el lector) */
+.epub-toc {
+  position: absolute; top: 10px; right: 10px; z-index: 75;
+  width: min(78vw, 300px); max-height: 70%; overflow-y: auto;
+  background: #17171c; color: #f2f2f4; border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 12px; box-shadow: 0 14px 34px rgba(0,0,0,0.5); padding: 12px;
+}
+
+.epub-toc[hidden] { display: none; }
+
+.epub-panel-head { display: flex; align-items: flex-start; gap: 10px; }
+
+.epub-panel-head .epub-toc-title { flex: 1; min-width: 0; padding-top: 7px; }
+
+.epub-toc-title {
+  margin: 0 0 8px; font-family: Georgia, "Times New Roman", serif;
+  font-size: 15px; font-weight: 700; color: #fff;
+  /* r26: halo azul definido y pegado al contorno de cada letra. */
+  text-shadow:
+    0 0 1px rgba(59, 130, 246, 0.95),
+    0.8px 0 1px rgba(59, 130, 246, 0.9),
+    -0.8px 0 1px rgba(59, 130, 246, 0.9),
+    0 0.8px 1px rgba(59, 130, 246, 0.9),
+    0 -0.8px 1px rgba(59, 130, 246, 0.9),
+    0 0 5px rgba(59, 130, 246, 0.78),
+    0 0 10px rgba(59, 130, 246, 0.42);
+}
+
+/* Paneles desde arriba (r19): índice y buscador caen anclados
+   arriba, abren a la mitad del alto y se estiran por el asa del
+   borde inferior hasta el alto completo. Acotado a .epub-topsheet
+   para NO tocar la lista de notas, que comparte la base .epub-toc. */
+.epub-topsheet {
+  top: 0; left: 0; right: 0; width: auto; max-height: none;
+  /* z 78: sobre las barras del lector (z 70) — si no, al
+     estirarse al 100% el asa queda bajo la barra inferior y no
+     se puede agarrar — y bajo el menú de selección (z 80). */
+  height: 50%; z-index: 78; border-radius: 0 0 18px 18px;
+  display: flex; flex-direction: column;
+}
+
+.epub-topsheet[hidden] { display: none; }
+
+/* Desplegable de la barra del lector (r25): alto automático,
+   filas etiqueta + control; la × va abajo a la derecha como en
+   los demás paneles desde arriba (regla .epub-panel-x). */
+.epub-menu { height: auto; padding-bottom: 46px; }
+
+.epub-menu-rows { display: flex; flex-direction: column; gap: 14px; padding: 2px 2px 0; }
+
+.epub-menu-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 38px; }
+
+.epub-menu-label { font-size: 14px; font-weight: 600; }
+
+.epub-menu-btns { display: inline-flex; gap: 8px; }
+
+.epub-menu-rows button {
+  border: 1px solid rgba(255,255,255,0.22); background: transparent; color: #f5f5f7;
+  border-radius: 999px; padding: 6px 11px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+
+.epub-menu-row input[type="range"] { flex: 1 1 auto; max-width: 210px; accent-color: var(--brass); }
+
+.epub-topsheet-scroll { overflow-y: auto; flex: 1 1 auto; min-height: 0; -webkit-overflow-scrolling: touch; }
+
+.epub-topsheet-grip { flex: 0 0 auto; padding: 9px 0 3px; display: flex; justify-content: center; cursor: ns-resize; touch-action: none; }
+
+.epub-topsheet-grip span { width: 56px; height: 5px; border-radius: 999px; background: rgba(255,255,255,0.35); display: block; }
+
+/* Cerrar de los paneles desde arriba (r25, pedido de Sergio con
+   foto): la × sale de la cabecera y queda FIJA en la esquina
+   INFERIOR DERECHA del panel, visible al 50 % y al 100 %; el asa
+   inferior sigue centrada y no se tocan. */
+.epub-panel-x {
+  position: absolute; right: 8px; bottom: 4px; z-index: 6;
+  width: 40px; height: 40px; padding: 0; cursor: pointer;
+  background: transparent; border: none; color: #f2f2f4;
+  font-size: 22px; line-height: 1; display: flex; align-items: center; justify-content: center;
+}
+
+/* Panel de notas (también se abre arriba): columna con la lista
+   en scroll y el pie con la × a la derecha. */
+#epub-notes:not([hidden]) { display: flex; flex-direction: column; }
+
+#epub-notes-list { overflow-y: auto; min-height: 0; -webkit-overflow-scrolling: touch; }
+
+.epub-panel-foot { flex: 0 0 auto; display: flex; justify-content: flex-end; padding-top: 6px; }
+
+.epub-top-backdrop { position: absolute; inset: 0; z-index: 65; background: rgba(0,0,0,0.35); }
+
+.epub-top-backdrop[hidden] { display: none; }
+
+/* Buscador en el libro (r19). */
+.epub-search-bar { display: flex; gap: 8px; margin: 2px 0 6px; }
+
+.epub-search-input {
+  flex: 1 1 auto; min-width: 0; box-sizing: border-box;
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 10px; color: #f5f5f7; padding: 10px 12px; font-size: 15px;
+}
+
+.epub-search-go {
+  flex: 0 0 auto; border: 1px solid #b7c4e2; background: #e9edf6; color: #1e3a8a;
+  border-radius: 10px; padding: 10px 14px; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+
+.epub-search-statusrow { display: flex; align-items: center; gap: 10px; }
+
+.epub-search-status { margin: 2px 0 6px; font-size: 12.5px; color: rgba(245,245,247,0.75); flex: 1 1 auto; }
+
+.epub-search-cancel {
+  border: 1px solid rgba(255,255,255,0.25); background: transparent; color: #f5f5f7;
+  border-radius: 8px; padding: 5px 10px; font-size: 12.5px; cursor: pointer; flex: 0 0 auto;
+}
+
+.epub-search-cancel[hidden] { display: none; }
+
+.epub-search-item {
+  display: block; width: 100%; text-align: left; background: transparent;
+  border: 0; border-bottom: 1px solid rgba(255,255,255,0.07);
+  padding: 9px 2px; cursor: pointer; color: #f5f5f7;
+}
+
+.epub-search-ch {
+  display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--brass); margin-bottom: 2px;
+}
+
+.epub-search-ex { display: block; font-size: 13.5px; line-height: 1.45; color: rgba(245,245,247,0.85); }
+
+.epub-search-ex mark { background: #f6c945; color: #17171c; border-radius: 2px; padding: 0 1px; }
+
+.epub-search-none { font-size: 13.5px; color: rgba(245,245,247,0.75); padding: 8px 2px; margin: 0; }
+
+.epub-toc-item {
+  display: block; width: 100%; text-align: left; background: none; border: none;
+  border-top: 1px solid rgba(255,255,255,0.08); padding: 11px 4px;
+  font-size: 14px; font-weight: 500; color: #f2f2f4; cursor: pointer;
+}
+
+.epub-toc-empty { margin: 4px 0; font-size: 13px; color: rgba(245,245,247,0.65); }
+
+/* Tarjeta del diccionario: hoja inferior dentro del lector */
+.epub-dict {
+  position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 80;
+  max-width: 560px; margin: 0 auto; max-height: 46%; overflow-y: auto;
+  background: #17171c; color: #f2f2f4;
+  border: 1px solid color-mix(in srgb, var(--brass) 55%, transparent);
+  border-radius: 14px; box-shadow: 0 16px 38px rgba(0,0,0,0.55);
+  padding: 14px 16px 12px;
+}
+
+.epub-dict[hidden] { display: none; }
+
+.epub-dict-head { display: flex; align-items: flex-start; gap: 10px; }
+
+.epub-dict-word {
+  margin: 0; flex: 1; min-width: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 21px; font-weight: 700; text-transform: capitalize; line-height: 1.25;
+}
+
+.epub-dict-close {
+  flex-shrink: 0; width: 34px; height: 34px; border: none; border-radius: 999px;
+  background: rgba(255,255,255,0.08); color: #f5f5f7; font-size: 19px; cursor: pointer; padding: 0; line-height: 1;
+}
+
+.epub-dict-body { margin-top: 6px; }
+
+.epub-dict-def + .epub-dict-def { margin-top: 10px; }
+
+.epub-dict-pos { margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--brass); }
+
+.epub-dict-text { margin: 3px 0 0; font-family: Georgia, "Times New Roman", serif; font-size: 16px; line-height: 1.55; }
+
+.epub-dict-status { margin: 4px 0; font-size: 14px; color: rgba(245,245,247,0.7); }
+
+.epub-dict-none { margin: 4px 0 0; font-family: Georgia, "Times New Roman", serif; font-size: 16px; }
+
+.epub-dict-hint { margin: 6px 0 0; font-size: 13px; line-height: 1.5; color: rgba(245,245,247,0.65); }
+
+.epub-dict-src { margin: 12px 0 0; font-size: 11px; letter-spacing: 0.04em; color: rgba(245,245,247,0.45); }
+
+/* ------------------------------------- doblez de la esquina */
+
+/* Al deslizar para cambiar de página, la esquina superior del lado
+   del gesto se dobla un poquito. Dos triángulos superpuestos del
+   tamaño que pone el gesto (tope chico): la sombra que el pliegue
+   echa sobre la página y, encima, el dorso de la esquina doblada
+   en papel del tema (--fold-bg lo fija JS según el tema). La
+   página nunca se gira ni se mueve. El elemento no recibe toques,
+   para no pelear ni con el gesto ni con el toque que muestra los
+   controles. */
+.epub-fold {
+  position: absolute; top: 0; z-index: 30;
+  width: 0; height: 0;
+  pointer-events: none;
+}
+
+.epub-fold[hidden] { display: none; }
+
+.epub-fold.next { right: 0; }
+
+.epub-fold.prev { left: 0; }
+
+.epub-fold-shade, .epub-fold-flap { position: absolute; top: 0; width: 100%; height: 100%; }
+
+.epub-fold-shade { background: rgba(0,0,0,0.28); filter: blur(3px); }
+
+.epub-fold.next .epub-fold-shade {
+  right: 0; transform: translate(-4px, 3px);
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+
+.epub-fold.prev .epub-fold-shade {
+  left: 0; transform: translate(4px, 3px);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+.epub-fold-flap {
+  filter: drop-shadow(-2px 2px 3px rgba(0,0,0,0.35));
+}
+
+.epub-fold.next .epub-fold-flap {
+  right: 0;
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+  background: linear-gradient(225deg,
+    color-mix(in srgb, var(--fold-bg, #101014) 55%, #ffffff) 0%,
+    color-mix(in srgb, var(--fold-bg, #101014) 82%, #ffffff) 52%,
+    color-mix(in srgb, var(--fold-bg, #101014) 88%, #000000) 100%);
+}
+
+.epub-fold.prev .epub-fold-flap {
+  left: 0; filter: drop-shadow(2px 2px 3px rgba(0,0,0,0.35));
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--fold-bg, #101014) 55%, #ffffff) 0%,
+    color-mix(in srgb, var(--fold-bg, #101014) 82%, #ffffff) 52%,
+    color-mix(in srgb, var(--fold-bg, #101014) 88%, #000000) 100%);
+}
+
+/* ------------------------------------- menú de selección */
+
+.epub-sel-text {
+  margin: 0; flex: 1; min-width: 0;
+  font-family: Georgia, "Times New Roman", serif; font-style: italic;
+  font-size: 16px; line-height: 1.4; color: #f2f2f4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+.epub-sel-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;
+}
+
+.epub-sel-grid button {
+  /* Nombres de las opciones en AZUL OSCURO #1e3a8a (r19, pedido
+     de Sergio: antes se veían amarillos/dorados). El chip claro
+     hace que el azul oscuro se lea bien sobre el panel oscuro,
+     en los dos temas del lector (los paneles no cambian con el
+     tema del libro). */
+  border: 1px solid #b7c4e2; background: #e9edf6;
+  color: #1e3a8a; border-radius: 10px; padding: 12px 8px;
+  font-size: 14px; font-weight: 600; cursor: pointer;
+}
+
+.epub-sel-grid button:active { background: #d3ddf2; }
+
+/* Paleta de colores de marca (r19): 10 muestras táctiles en una
+   rejilla de 5×2, dentro del flujo de la hoja/menú. La elegida
+   (o la recordada) lleva anillo oscuro. */
+.epub-palette, .epub-recolor { margin-top: 12px; }
+
+.epub-palette[hidden], .epub-recolor[hidden] { display: none; }
+
+.epub-palette-title {
+  /* r25 (pedido de Sergio): mismo estilo que los demás títulos
+     de sección del lector — palabra en blanco, serif Georgia,
+     ~15 px, negrita, sin pastilla ni fondo. */
+  margin: 0 0 6px; font-family: Georgia, "Times New Roman", serif;
+  font-size: 15px; font-weight: 700; color: #fff;
+  /* r26: halo azul definido y pegado al contorno de cada letra. */
+  text-shadow:
+    0 0 1px rgba(59, 130, 246, 0.95),
+    0.8px 0 1px rgba(59, 130, 246, 0.9),
+    -0.8px 0 1px rgba(59, 130, 246, 0.9),
+    0 0.8px 1px rgba(59, 130, 246, 0.9),
+    0 -0.8px 1px rgba(59, 130, 246, 0.9),
+    0 0 5px rgba(59, 130, 246, 0.78),
+    0 0 10px rgba(59, 130, 246, 0.42);
+}
+
+.epub-recolor .epub-palette-title { margin-top: 10px; }
+
+.epub-palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+
+.epub-swatch {
+  height: 36px; border-radius: 10px; cursor: pointer; padding: 0;
+  border: 2px solid rgba(255,255,255,0.35);
+}
+
+.epub-swatch.sel { border-color: #ffffff; box-shadow: 0 0 0 2px #1e3a8a; }
+
+.epub-palette-back {
+  margin-top: 10px; width: 100%; padding: 10px 8px; cursor: pointer;
+  border: 1px solid #b7c4e2; background: #e9edf6; color: #1e3a8a;
+  border-radius: 10px; font-size: 14px; font-weight: 600;
+}
+
+/* ------------------------------------- editor y lista de notas */
+
+/* Vista de una nota al tocar su marca (r19). */
+.epub-noteview-text { font-size: 15px; line-height: 1.55; margin: 8px 0 0; white-space: pre-wrap; word-break: break-word; }
+
+.epub-note-textarea {
+  width: 100%; box-sizing: border-box; margin-top: 10px;
+  background: rgba(255,255,255,0.06); color: #f5f5f7;
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 10px;
+  padding: 10px 12px; font-size: 15px; line-height: 1.5;
+  font-family: inherit; resize: vertical;
+}
+
+.epub-note-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+
+.epub-note-btn {
+  border: 1px solid rgba(255,255,255,0.2); background: transparent; color: #f5f5f7;
+  border-radius: 999px; padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+
+.epub-note-btn.primary { background: var(--brass); border-color: var(--brass); color: #14100a; }
+
+.epub-note-item { border-top: 1px solid rgba(255,255,255,0.08); padding: 10px 2px; }
+
+.epub-note-jump {
+  display: block; width: 100%; text-align: left; background: none; border: none; padding: 0;
+  font-family: Georgia, "Times New Roman", serif; font-style: italic;
+  font-size: 14px; line-height: 1.45; color: var(--brass); cursor: pointer;
+}
+
+.epub-note-body { margin: 5px 0 0; font-size: 14px; line-height: 1.55; color: #f2f2f4; white-space: pre-wrap; }
+
+.epub-note-del {
+  background: none; border: none; padding: 4px 0 0; margin-top: 2px;
+  font-size: 12px; color: rgba(245,245,247,0.55); cursor: pointer; text-decoration: underline;
+}
+
+/* ------------ hoja inferior de UNA palabra (bottom sheet) ------ */
+.epub-wordsheet {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 82;
+  display: flex; flex-direction: column;
+  background: #17171c; color: #f2f2f4;
+  border-top: 1px solid color-mix(in srgb, var(--brass) 55%, transparent);
+  border-radius: 16px 16px 0 0; box-shadow: 0 -14px 38px rgba(0,0,0,0.55);
+  transition: height .22s ease;
+}
+
+.epub-wordsheet[hidden] { display: none; }
+
+.epub-wordsheet.dragging { transition: none; }
+
+.epub-ws-handle {
+  flex-shrink: 0; padding: 10px 0 6px; display: flex; justify-content: center;
+  touch-action: none; cursor: grab;
+}
+
+.epub-ws-grip { width: 44px; height: 5px; border-radius: 99px; background: rgba(255,255,255,0.35); }
+
+.epub-ws-head { flex-shrink: 0; display: flex; align-items: flex-start; gap: 10px; padding: 0 16px; }
+
+.epub-ws-word {
+  margin: 0; flex: 1; min-width: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 21px; font-weight: 700; text-transform: capitalize; line-height: 1.25;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.epub-ws-scroll { overflow-y: auto; padding: 10px 16px calc(16px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling: touch; }
+
+.epub-ws-box {
+  border: 1px solid rgba(255,255,255,0.13); border-radius: 12px;
+  padding: 10px 12px; background: rgba(255,255,255,0.04);
+}
+
+.epub-ws-box + .epub-ws-box { margin-top: 10px; }
+
+.epub-ws-box-title {
+  /* r25 (pedido de Sergio; sustituye al negro sin pastilla de la
+     r24, que se veía raro): el título queda como solo la palabra
+     en BLANCO, sin pastilla ni fondo, con tipografía serif
+     (Georgia) distinta al sans de la interfaz, ~15 px y negrita. */
+  margin: 0 0 6px; font-family: Georgia, "Times New Roman", serif;
+  font-size: 15px; font-weight: 700; color: #fff;
+  /* r26: halo azul definido y pegado al contorno de cada letra. */
+  text-shadow:
+    0 0 1px rgba(59, 130, 246, 0.95),
+    0.8px 0 1px rgba(59, 130, 246, 0.9),
+    -0.8px 0 1px rgba(59, 130, 246, 0.9),
+    0 0.8px 1px rgba(59, 130, 246, 0.9),
+    0 -0.8px 1px rgba(59, 130, 246, 0.9),
+    0 0 5px rgba(59, 130, 246, 0.78),
+    0 0 10px rgba(59, 130, 246, 0.42);
+}
+
+/* Selector de diccionario de traducción (r19) y rótulo de la
+   variante sin acentos del diccionario local. */
+.epub-ws-dictsel {
+  width: 100%; box-sizing: border-box; margin: 2px 0 8px;
+  background: rgba(255,255,255,0.07); color: #f5f5f7;
+  border: 1px solid rgba(255,255,255,0.22); border-radius: 10px;
+  padding: 9px 10px; font-size: 14px;
+}
+
+.epub-dict-var {
+  margin: 10px 0 4px; font-size: 12.5px; font-style: italic;
+  color: rgba(245,245,247,0.7);
+}
+
+.epub-ws-trans-btn { margin-top: 8px; }
+
+/* «Traducir» es otra opción de la hoja: mismo azul oscuro #1e3a8a
+   sobre chip claro, en vez del botón dorado primario (r19). */
+.epub-ws-trans-btn.primary {
+  background: #e9edf6; border: 1px solid #b7c4e2; color: #1e3a8a;
+}
+
+.epub-ws-actions { margin-top: 12px; }
+
+/* ------------ volteo cilíndrico (curl) sobre clones ------------ */
+/* Capa del gesto de volteo: vive sobre el visor y bajo la lámina
+   (z 10 < 20). El contenido son clones del documento vivo; la hoja
+   que voltea es un doblez verdadero (plano + solapa reflejada +
+   banda de tonos), diagonal desde las esquinas y vertical desde
+   los bordes. La capa nunca recibe toques: la entrada sigue en
+   la lámina del padre. */
+.epub-curl {
+  /* r18: la capa se reubica sobre la cáscara (fuera del escenario,
+     que recorta con overflow:hidden) y NO recorta: la hoja que se
+     dobla puede salirse del rectángulo del libro hacia arriba y
+     hacia abajo durante el pase, como en un libro de papel. Su
+     geometría (left/top/width/height) la fija el JS al tamaño del
+     escenario en cada apertura y en cada gesto. */
+  position: absolute; z-index: 15; overflow: visible;
+  pointer-events: none; perspective: 1500px;
+}
+
+.epub-curl[hidden] { display: none; }
+
+.epub-curl .cv-wrap { position: absolute; inset: 0; overflow: hidden; }
+
+.epub-curl iframe { position: absolute; left: 0; top: 0; border: none; pointer-events: none; }
+
+.epub-curl .cv-strip {
+  position: absolute; top: 0; left: 0; height: 100%;
+  will-change: transform;
+}
+
+.epub-curl .cv-face {
+  position: absolute; inset: 0; overflow: hidden;
+  backface-visibility: hidden; -webkit-backface-visibility: hidden;
+}
+
+.epub-curl .cv-back { transform: rotateY(180deg); }
+
+.epub-curl .cv-clip { position: absolute; inset: 0; overflow: hidden; }
+
+.epub-curl .cv-shade, .epub-curl .cv-sheen { position: absolute; inset: 0; pointer-events: none; }
+
+.epub-curl .cv-shade { background: #000; opacity: 0; }
+
+.epub-curl .cv-sheen { background: #fff; opacity: 0; }
+
+.epub-curl .cv-paper { position: absolute; inset: 0; }
+
+.epub-curl .cv-tail { position: absolute; top: 0; height: 100%; }
+
+.epub-curl .cv-shadow { position: absolute; top: 0; height: 100%; pointer-events: none; }
+
+.epub-curl .cv-arc { position: absolute; top: 0; height: 100%; pointer-events: none; }
+
+/* Lavado de luz del anverso plano (r18): la parte plana que va
+   delante se ve más clara; la sombra que entra al cilindro la
+   ponen las franjas y el arco. Va dentro de la zona plana, así
+   hereda su recorte (inset en borde, polígono en esquina). */
+.epub-curl .cv-flatwash { position: absolute; inset: 0; pointer-events: none; }
+
+/* Sombra suave proyectada sobre la página revelada junto a la
+   línea de doblez diagonal (r18): banda larga anclada en el punto
+   medio del pliegue y rotada con él; sin recorte de capa puede
+   asomar fuera del rectángulo del libro. */
+.epub-curl .cv-cast {
+  position: absolute; left: 0; top: 0; width: 52px; height: 2600px;
+  transform-origin: 0 0; pointer-events: none; display: none;
+}
+
+/* Solapa del doblez diagonal de esquina (r18): el JS le pone el
+   clip-path del polígono reflejado (puede salirse del rectángulo
+   del libro: la capa no recorta). Dentro: el fantasma espejado de
+   la página (apenas insinuado), el papel blanquecino translúcido
+   del reverso y la banda de tonos del pliegue (raíz → cresta →
+   atenuación), anclada y rotada como la sombra proyectada. */
+.epub-curl .cv-flap { position: absolute; inset: 0; pointer-events: none; }
+
+.epub-curl .cv-flap[hidden] { display: none; }
+
+.epub-curl .cv-flap-reflect { position: absolute; inset: 0; transform-origin: 0 0; }
+
+.epub-curl .cv-flap-paper { position: absolute; inset: 0; }
+
+.epub-curl .cv-flap-band {
+  position: absolute; left: 0; top: 0; width: 170px; height: 2600px;
+  transform-origin: 0 0; pointer-events: none;
+}
