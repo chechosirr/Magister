@@ -1776,7 +1776,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r37";
+const EPUB_BUILD = "r38";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -1825,14 +1825,25 @@ const EPUB_PAPER = {
    su banda conserva el perfil exacto de r34 (ver la nota en
    su `band`). Medido por píxeles con measure-r35: en oscuro
    el pico del doblez bajó de ~102 (base de la solapa ~43,
-   plano ~15) a ~58 con joroba ancha y caída larga. */
+   plano ~15) a ~58 con joroba ancha y caída larga.
+   r38 (Sergio, tras probar la r35 en su iPhone): «El tema
+   oscuro se ve muy plano. No se ve abultado cilíndrico.
+   Debes jugar con las sombras y brillos para dar el efecto
+   en el tema oscuro». La duna de r35 quedó demasiado
+   atenuada: la r38 busca el PUNTO MEDIO entre r34 (tubo
+   brillante) y r35 (plano) SOLO en oscuro — misma forma de
+   duna (joroba única, redondeada, sin meseta ni filo), pero
+   con la cresta luminosa al doble y cuarto (0.085→0.190),
+   la raíz más sombreada (0.38→0.46), el arco del pool más
+   marcado (0.08→0.13) y shade/sheen un punto más fuertes.
+   El claro no se toca: su perfil queda el de r34/r35. */
 const EPUB_CURL_TONES = {
   oscuro: {
-    arc: "linear-gradient(90deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.14) 22%, rgba(255,255,255,0.08) 42%, rgba(255,255,255,0.03) 62%, rgba(0,0,0,0.10) 82%, rgba(0,0,0,0.30) 100%)",
-    arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.14) 22%, rgba(255,255,255,0.08) 42%, rgba(255,255,255,0.03) 62%, rgba(0,0,0,0.10) 82%, rgba(0,0,0,0.30) 100%)",
+    arc: "linear-gradient(90deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.14) 22%, rgba(255,255,255,0.13) 42%, rgba(255,255,255,0.055) 62%, rgba(0,0,0,0.10) 82%, rgba(0,0,0,0.30) 100%)",
+    arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.14) 22%, rgba(255,255,255,0.13) 42%, rgba(255,255,255,0.055) 62%, rgba(0,0,0,0.10) 82%, rgba(0,0,0,0.30) 100%)",
     cast: "rgba(0,0,0,0.42)",
-    band: "linear-gradient(90deg, rgba(0,0,0,0.38) 0%, rgba(0,0,0,0.23) 7%, rgba(0,0,0,0.08) 14%, rgba(255,255,255,0.030) 21%, rgba(255,255,255,0.066) 28%, rgba(255,255,255,0.085) 35%, rgba(255,255,255,0.078) 43%, rgba(255,255,255,0.056) 53%, rgba(255,255,255,0.033) 65%, rgba(255,255,255,0.015) 78%, rgba(255,255,255,0.004) 89%, rgba(0,0,0,0) 100%)",
-    shade: 0.30, sheen: 0.18,
+    band: "linear-gradient(90deg, rgba(0,0,0,0.46) 0%, rgba(0,0,0,0.29) 7%, rgba(0,0,0,0.10) 14%, rgba(255,255,255,0.068) 21%, rgba(255,255,255,0.142) 28%, rgba(255,255,255,0.190) 35%, rgba(255,255,255,0.174) 43%, rgba(255,255,255,0.126) 53%, rgba(255,255,255,0.077) 65%, rgba(255,255,255,0.036) 78%, rgba(255,255,255,0.010) 89%, rgba(0,0,0,0) 100%)",
+    shade: 0.34, sheen: 0.22,
     wash: "linear-gradient(90deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
     washPrev: "linear-gradient(270deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
   },
