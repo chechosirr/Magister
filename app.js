@@ -1857,7 +1857,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r49";
+const EPUB_BUILD = "r50";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -1899,8 +1899,19 @@ const EPUB_THEMES = {
      mejor. La tinta blanca #ffffff se queda (su contraste
      sobre el carbón sube de ~9,5:1 a ~12,7:1) y el enlace
      dorado también. Es prueba: si no le gusta, se vuelve a
-     #45454b. */
-  oscuro: { bg: "#323237", ink: "#ffffff", head: "#ffffff", link: "#d9ac55" },
+     #45454b.
+     r50 (Sergio, tras probar el carbón de la r46): «El color
+     oscuro vuélvelo al gris normal del inicio» — se descarta
+     el carbón y el fondo oscuro vuelve al GRISÁCEO #45454b
+     de r41/r43 (plano ~69), con la tinta blanca y el enlace
+     dorado de siempre (contraste del blanco ≈9,5:1, el de
+     r43). El papel del reverso oscuro y el wash vuelven a
+     sus valores de esta base (ver EPUB_PAPER y el wash de
+     EPUB_CURL_TONES); la banda no se toca (es la receta de
+     la r42, que nació calibrada sobre esta misma base). El
+     reverso oscuro de la r47 se queda: anverso y reverso
+     del mismo tono oscuro durante el volteo. */
+  oscuro: { bg: "#45454b", ink: "#ffffff", head: "#ffffff", link: "#d9ac55" },
   claro: { bg: "#faf7f0", ink: "#2a251e", head: "#171310", link: "#8a5a12" },
   /* r48 (Sergio, con su foto photo-93.jpg de un color liso):
      «Agrégale otro tema de este color también». TERCER tema
@@ -1933,8 +1944,13 @@ const EPUB_PAPER = {
      también»: el reverso oscuro vuelve a cubrirse con ESTE
      papel, con la misma fuerza relativa de insinuación que
      tenía en la r43 sobre su base (ver epubCurlPoolRender).
-     El papel del claro NO se toca. */
-  oscuro: "rgba(77,77,84,0.88)",
+     El papel del claro NO se toca.
+     r50: con el fondo de vuelta en #45454b (69,69,75), el
+     papel vuelve a su valor de r41–r45 sobre esta base:
+     rgba(96,96,104,0.88) — la misma relación +27/+27/+29
+     por canal; su compuesto sobre el fondo levanta ≈+24
+     de luminancia, como entonces. */
+  oscuro: "rgba(96,96,104,0.88)",
   claro: "rgba(255,253,246,0.88)",
   /* r48: papel del reverso MENTA con la receta del claro:
      el tinte del propio fondo aclarado un punto (bg
@@ -2055,7 +2071,14 @@ const EPUB_PAPER = {
    (raíz 0,77, cola 0,90) y su cresta blanca 0.01 da
    ρ≈1,024 sobre ~74 — la misma forma del claro (ρ≈1,028)
    que la receta de la r42 buscaba; de hecho la banda nació
-   en r42 calibrada sobre una solapa oscura. */
+   en r42 calibrada sobre una solapa oscura.
+   r50 (fondo de vuelta en #45454b): la banda queda TAL
+   CUAL — es la receta de la r42, calibrada sobre esta
+   misma base grisácea (solapa ≈93 bajo el papel
+   restaurado; los negros por alfa conservan su ρ y la
+   cresta blanca 0.01 sigue en ρ≈1,01). Solo el WASH, que
+   compone sobre el anverso plano, vuelve a su alfa de
+   esta base (del 0.007 del carbón al 0.01 de r42–r45). */
 const EPUB_CURL_TONES = {
   oscuro: {
     arc: "linear-gradient(90deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.01) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
@@ -2063,10 +2086,13 @@ const EPUB_CURL_TONES = {
     cast: "rgba(0,0,0,0.25)",
     band: "linear-gradient(90deg, rgba(0,0,0,0.23) 0%, rgba(255,255,255,0.01) 15.9%, rgba(0,0,0,0.10) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
     shade: 0.22, sheen: 0.10,
-    /* r46: wash recalibrado 0.01 → 0.007 (ver la nota del
-       bloque): conserva su ρ≈1,027 sobre el anverso carbón. */
-    wash: "linear-gradient(90deg, rgba(255,255,255,0.007) 0%, rgba(255,255,255,0) 55%, rgba(255,255,255,0) 100%)",
-    washPrev: "linear-gradient(270deg, rgba(255,255,255,0.007) 0%, rgba(255,255,255,0) 55%, rgba(255,255,255,0) 100%)",
+    /* r46: wash recalibrado 0.01 → 0.007 (conservaba su
+       ρ≈1,027 sobre el anverso carbón). r50: con el fondo
+       de vuelta en #45454b, el wash vuelve a 0.01 — su
+       valor de r42–r45 sobre esta base (ρ≈1,027 sobre el
+       plano ~69). */
+    wash: "linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0) 55%, rgba(255,255,255,0) 100%)",
+    washPrev: "linear-gradient(270deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0) 55%, rgba(255,255,255,0) 100%)",
   },
   claro: {
     arc: "linear-gradient(90deg, rgba(74,56,24,0.34) 0%, rgba(74,56,24,0.08) 22%, rgba(255,255,255,0.65) 44%, rgba(74,56,24,0.05) 60%, rgba(74,56,24,0.18) 80%, rgba(74,56,24,0.34) 100%)",
@@ -3324,7 +3350,9 @@ function epubCurlPoolRender(D) {
      la base carbón con la misma fuerza relativa de
      insinuación de la r43) — el tratamiento que el reverso
      oscuro tenía en la r43. Anverso y reverso oscuros, como
-     el tema manda. En tema claro nada cambia: anverso y
+     el tema manda. (r50: el fondo oscuro vuelve a #45454b
+     y el papel a su valor de esa base; el tratamiento no
+     cambia.) En tema claro nada cambia: anverso y
      reverso son los de siempre. Todo esto solo se ve durante
      el movimiento: en reposo la capa del volteo está oculta
      y la página visible es la del visor, en su tema. */
