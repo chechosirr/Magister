@@ -1013,6 +1013,12 @@ function closeAdminWelcome() {
      su nombre (flujo libre de la v1, conversación en su navegador).
      El saludo automático de esta entrada NO lleva nombre: «Hola,
      ¿cómo podemos ayudarte hoy?»
+   - «Suscribirse» (r36: botón «Suscríbete a Magister» de «Mi
+     cuenta» y «Suscribirse ahora» del aviso de prueba): solo con
+     cuenta. Misma conversación de la cuenta, pero el mensaje que
+     cae de parte de Magister es el dictado por Sergio: «Hola, ¿Le
+     gustaría adquirir nuestra suscripción?» (al crearla, en vez
+     del saludo genérico; si ya estaba abierta, se añade una vez).
 
    Una sola conversación por cuenta; sondeo corto (sin websockets). */
 const CHAT_CONV_KEY = "magister-chat-conv";
@@ -1022,12 +1028,13 @@ const CHAT_CONTACT_KEY = "magister-chat-contact";
 const CHAT_EXPLAIN = {
   libro: "¿No encuentras un libro en la biblioteca? Pídelo aquí: dinos cuál buscas y lo subimos para ti. También puedes escribirnos por cualquier otra cosa.",
   ayuda: "Escríbenos aquí lo que necesites: te respondemos en cuanto podamos.",
+  suscripcion: "Pídenos aquí tu suscripción a Magister para leer los libros completos: te la activamos en cuanto nos escribas.",
 };
 
 function chatLoad(key) { try { return window.localStorage.getItem(key) || ""; } catch { return ""; } }
 function chatSave(key, val) { try { if (val) window.localStorage.setItem(key, val); else window.localStorage.removeItem(key); } catch { /* sin almacenamiento */ } }
 
-let chatIntent = "libro";        // "libro" | "ayuda": última entrada usada
+let chatIntent = "libro";        // "libro" | "ayuda" | "suscripcion": última entrada usada
 let chatAnonConv = chatLoad(CHAT_CONV_KEY);
 /* Registro local de conversaciones anónimas de ESTE dispositivo
    («Mis chats»): cada conversación usada queda anotada; las
@@ -1096,7 +1103,7 @@ function chatViewHtml() {
       <button type="button" class="chatview-back" data-action="chat-back" aria-label="Volver">←</button>
       <div class="chatview-head-text">
         <p class="chatview-title">Magister</p>
-        <p class="chatview-sub">${chatIntent === "libro" ? "Pídenos tu libro" : "Ayuda"}</p>
+        <p class="chatview-sub">${chatIntent === "libro" ? "Pídenos tu libro" : chatIntent === "suscripcion" ? "Suscripción" : "Ayuda"}</p>
       </div>
       ${!anonNeedsIntro ? (chatClosed ? `<button type="button" class="chatview-endbtn chatview-newbtn" data-action="chat-new">Iniciar un chat nuevo</button>` : `<button type="button" class="chatview-endbtn" data-action="chat-finalize">Finalizar chat</button>`) : ""}
     </div>
@@ -1444,8 +1451,8 @@ document.addEventListener("click", async (e) => {
   else if (action === "goto-home") { viewHistory = []; go({ name: "home" }, { replace: true }); }
   else if (action === "goto-library") go({ name: "library" });
   else if (action === "goto-settings") { settingsMsg = null; go({ name: "account-settings" }); }
-  else if (action === "subscribe-chat") openChat("ayuda");
-  else if (action === "notice-subscribe") { hideSampleNotice(); sampleNoticeBookId = null; openChat("ayuda"); }
+  else if (action === "subscribe-chat") openChat("suscripcion");
+  else if (action === "notice-subscribe") { hideSampleNotice(); sampleNoticeBookId = null; openChat("suscripcion"); }
   else if (action === "notice-continue") { hideSampleNotice(); const _nb = sampleNoticeBookId; sampleNoticeBookId = null; if (_nb != null) openBookDirect(_nb); }
   else if (action === "require-auth") go({ name: "account" });
   else if (action === "subscribe") go({ name: "account" });
@@ -1751,7 +1758,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r35";
+const EPUB_BUILD = "r36";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
