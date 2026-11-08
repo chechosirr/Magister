@@ -745,14 +745,26 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
      a través. El tinte por defecto es el del tema Oscuro;
      Claro y Menta llevan el suyo (reglas [data-epub-theme]
      tras la hoja de palabra). */
-  background: rgba(26, 26, 33, 0.74);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  backdrop-filter: blur(24px) saturate(1.6);
+/* r53 (pedido de Sergio, con su foto del Centro de Control
+     de iOS): el cristal pasa a ser TRANSLÚCIDO DE VERDAD —
+     veladura ligera y desenfoque moderado: el fondo de
+     atrás SE PERCIBE (su luz, su color y los párrafos como
+     manchas suaves) sin poderse leer, y las letras van
+     puestas sobre el cristal. Sustituye al tinte casi
+     opaco de r52 (0,74–0,78 con blur 24). */
+  background: rgba(22, 22, 30, 0.50);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  backdrop-filter: blur(20px) saturate(1.5);
 }
 
 .epub-toc[hidden] { display: none; }
 
-.epub-panel-head { display: flex; align-items: flex-start; gap: 10px; }
+/* r53: la cabecera es franja de arrastre (extender/recoger
+   la hoja desde cualquier punto de su parte superior, ver
+   epubTopAttach): el gesto vertical no se cede a scrolles. */
+.epub-panel-head { display: flex; align-items: flex-start; gap: 10px; touch-action: none; }
+
+.epub-topsheet .epub-panel-head { cursor: grab; }
 
 .epub-panel-head .epub-toc-title { flex: 1; min-width: 0; padding-top: 7px; }
 
@@ -895,16 +907,14 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
   position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 80;
   max-width: 560px; margin: 0 auto; max-height: 46%; overflow-y: auto;
   color: #f2f2f4;
-/* r52 (pedido de Sergio): las hojas del lector pasan a
-     fondo «liquid glass» — translúcido con desenfoque fuerte
-     del fondo (blur + saturación): se insinúa la luz y el
-     color de la página de atrás, pero su texto jamás se lee
-     a través. El tinte por defecto es el del tema Oscuro;
-     Claro y Menta llevan el suyo (reglas [data-epub-theme]
-     tras la hoja de palabra). */
-  background: rgba(26, 26, 33, 0.74);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  backdrop-filter: blur(24px) saturate(1.6);
+/* r52: fondo «liquid glass» de las hojas (ver .epub-toc).
+     r53: cristal TRANSLÚCIDO DE VERDAD — veladura ligera
+     y desenfoque moderado, como el Centro de Control de
+     iOS de la foto de Sergio: el fondo se percibe borroso
+     y las letras van puestas sobre el cristal. */
+  background: rgba(22, 22, 30, 0.50);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  backdrop-filter: blur(20px) saturate(1.5);
   border: 1px solid color-mix(in srgb, var(--brass) 55%, transparent);
   border-radius: 14px; box-shadow: 0 16px 38px rgba(0,0,0,0.55);
   padding: 14px 16px 12px;
@@ -1052,7 +1062,11 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
      Tonos fijados por medición: con un paso menos, el
      título de la paleta — directo sobre el cristal, sin
      respaldo ni cuadro firme — quedaba en ~3,9:1. */
-  color: #93c5fd;
+  /* r53: con el cristal translúcido de verdad, la paleta
+     sube un paso más (#bfdbfe, ver también la regla por
+     tema tras la hoja de palabra): es el único título sin
+     cuadro firme detrás y el que menos contraste tenía. */
+  color: #bfdbfe;
 }
 
 .epub-recolor .epub-palette-title { margin-top: 10px; }
@@ -1114,16 +1128,14 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 82;
   display: flex; flex-direction: column;
   color: #f2f2f4;
-/* r52 (pedido de Sergio): las hojas del lector pasan a
-     fondo «liquid glass» — translúcido con desenfoque fuerte
-     del fondo (blur + saturación): se insinúa la luz y el
-     color de la página de atrás, pero su texto jamás se lee
-     a través. El tinte por defecto es el del tema Oscuro;
-     Claro y Menta llevan el suyo (reglas [data-epub-theme]
-     tras la hoja de palabra). */
-  background: rgba(26, 26, 33, 0.74);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  backdrop-filter: blur(24px) saturate(1.6);
+/* r52: fondo «liquid glass» de las hojas (ver .epub-toc).
+     r53: cristal TRANSLÚCIDO DE VERDAD — veladura ligera
+     y desenfoque moderado, como el Centro de Control de
+     iOS de la foto de Sergio: el fondo se percibe borroso
+     y las letras van puestas sobre el cristal. */
+  background: rgba(22, 22, 30, 0.50);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  backdrop-filter: blur(20px) saturate(1.5);
   border-top: 1px solid color-mix(in srgb, var(--brass) 55%, transparent);
   border-radius: 16px 16px 0 0; box-shadow: 0 -14px 38px rgba(0,0,0,0.55);
   transition: height .22s ease;
@@ -1140,7 +1152,11 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
 
 .epub-ws-grip { width: 44px; height: 5px; border-radius: 99px; background: rgba(255,255,255,0.35); }
 
-.epub-ws-head { flex-shrink: 0; display: flex; align-items: flex-start; gap: 10px; padding: 0 16px; }
+/* r53: la cabecera de la hoja de palabra (palabra + ×) es
+   también franja de arrastre, como el asa (ver epubWsAttach):
+   touch-action none para que el gesto vertical sea del
+   arrastre y no de un scroll; la × sigue siendo toque. */
+.epub-ws-head { flex-shrink: 0; display: flex; align-items: flex-start; gap: 10px; padding: 0 16px; touch-action: none; cursor: grab; }
 
 .epub-ws-word {
   margin: 0; flex: 1; min-width: 0;
@@ -1157,7 +1173,11 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
   /* r52: sobre el cristal, los cuadros (Significado /
      Traducción) guardan una capa más firme para que las
      definiciones se lean perfectas. */
-  background: rgba(13, 13, 18, 0.52);
+  /* r53: con el cristal ya translúcido de verdad, los
+     cuadros guardan solo una veladura un poco mayor que
+     la de la hoja — también translúcidos — y las
+     definiciones se siguen leyendo perfectas. */
+  background: rgba(13, 13, 18, 0.46);
 }
 
 .epub-ws-box + .epub-ws-box { margin-top: 10px; }
@@ -1194,13 +1214,17 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
    contraste.
    La palabra elegida (.epub-ws-word / .epub-dict-word) NO
    es título de sección: se queda como está. */
+/* r53: las veladuras por tema bajan a la par que la base
+   (0,50): Claro queda en 0,58 cálida y Menta en 0,56
+   verdosa — la página de atrás se percibe a través en
+   los tres temas y el texto de la hoja sigue firme. */
 .epub-shell[data-epub-theme="claro"] .epub-toc,
 .epub-shell[data-epub-theme="claro"] .epub-dict,
-.epub-shell[data-epub-theme="claro"] .epub-wordsheet { background: rgba(24, 20, 15, 0.78); }
+.epub-shell[data-epub-theme="claro"] .epub-wordsheet { background: rgba(21, 18, 14, 0.58); }
 
 .epub-shell[data-epub-theme="menta"] .epub-toc,
 .epub-shell[data-epub-theme="menta"] .epub-dict,
-.epub-shell[data-epub-theme="menta"] .epub-wordsheet { background: rgba(12, 28, 26, 0.76); }
+.epub-shell[data-epub-theme="menta"] .epub-wordsheet { background: rgba(10, 25, 23, 0.56); }
 
 .epub-shell[data-epub-theme="claro"] .epub-toc-title,
 .epub-shell[data-epub-theme="claro"] .epub-palette-title,
@@ -1208,6 +1232,13 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
 .epub-shell[data-epub-theme="menta"] .epub-toc-title,
 .epub-shell[data-epub-theme="menta"] .epub-palette-title,
 .epub-shell[data-epub-theme="menta"] .epub-ws-box-title { color: #bfdbfe; }
+
+/* r53: en Claro y Menta el título de la paleta sube un
+   paso extra (#dbeafe, el azul más claro de la familia):
+   va directo sobre el cristal translúcido, sin cuadro, y
+   era el título con menos contraste medido. */
+.epub-shell[data-epub-theme="claro"] .epub-palette-title,
+.epub-shell[data-epub-theme="menta"] .epub-palette-title { color: #dbeafe; }
 
 /* Selector de diccionario de traducción (r19) y rótulo de la
    variante sin acentos del diccionario local. */

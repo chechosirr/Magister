@@ -1857,7 +1857,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r52";
+const EPUB_BUILD = "r53";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -4368,7 +4368,10 @@ function epubTopBackdropSync() {
 /* Blindaje del CONTENIDO de las hojas (r33, pedido de Sergio):
    arrastrar dentro de un panel SOLO desplaza su contenido —
    nunca lo estira, lo colapsa ni lo cierra; eso queda solo
-   para el ASA (la pestaña/línea del panel) y para la ×. En el
+   para el ASA (la pestaña/línea del panel) y para la ×.
+   (r53: la cabecera de cada panel también es zona de
+   arrastre — epubTopAttach / epubWsAttach — y sus toques no
+   nacen en el contenido, así que el blindaje no cambia.) En el
    código el cambio de altura ya colgaba solo del asa, pero en
    iOS el gesto que el scroll interno no puede absorber (contenido
    corto, o tirar más allá del borde) se encadenaba fuera y el
@@ -4410,10 +4413,14 @@ function epubTopAttach() {
     bd.__mgTopHook = true;
     bd.addEventListener("click", () => { epubCloseOverlays(); epubPoke(); });
   }
-  document.querySelectorAll("[data-topgrip]").forEach((grip) => {
-    if (grip.__mgGripHook) return;
-    grip.__mgGripHook = true;
-    const panelId = grip.getAttribute("data-topgrip");
+  /* El arrastre vertical de una hoja superior (estirar a
+     completa, recoger a la mitad, cerrar bajo el 38 %): la
+     MISMA mecánica cuelga de cualquier zona de arrastre del
+     panel — el asa inferior de siempre y, desde r53, la
+     cabecera completa — sin duplicar código. */
+  const attachTopDrag = (zone, panelId) => {
+    if (!zone || zone.__mgTopDragHook) return;
+    zone.__mgTopDragHook = true;
     let drag = null;
     const yOf = (e) => (e.touches && e.touches[0]) ? e.touches[0].clientY : (typeof e.clientY === "number" ? e.clientY : 0);
     const start = (e) => {
@@ -4439,17 +4446,32 @@ function epubTopAttach() {
       if (h < H * 0.38) { p.style.height = ""; epubCloseOverlays(); epubPoke(); return; }
       p.style.height = (h > H * 0.72 ? H : Math.round(H / 2)) + "px";
     };
-    grip.addEventListener("touchstart", start, { passive: true });
-    grip.addEventListener("touchmove", move, { passive: false });
-    grip.addEventListener("touchend", end);
-    grip.addEventListener("touchcancel", end);
-    grip.addEventListener("mousedown", (e) => {
+    zone.addEventListener("touchstart", start, { passive: true });
+    zone.addEventListener("touchmove", move, { passive: false });
+    zone.addEventListener("touchend", end);
+    zone.addEventListener("touchcancel", end);
+    zone.addEventListener("mousedown", (e) => {
       start(e);
       const mv = (ev) => move(ev);
       const up = () => { window.removeEventListener("mousemove", mv); window.removeEventListener("mouseup", up); end(); };
       window.addEventListener("mousemove", mv);
       window.addEventListener("mouseup", up);
     });
+  };
+  document.querySelectorAll("[data-topgrip]").forEach((grip) => {
+    attachTopDrag(grip, grip.getAttribute("data-topgrip"));
+  });
+  /* r53 (pedido de Sergio): «que el panel se pueda extender
+     y desextender arrastrando cualquier parte de la parte
+     superior del panel» — la cabecera completa de cada hoja
+     superior (título y su franja) arrastra igual que el asa.
+     La cabecera no lleva controles (la × va fija abajo a la
+     derecha), así que el arrastre no roba ningún toque. El
+     menú de Ajustes entra también: su alto natural se
+     restablece al abrir (epubToggleMenu). */
+  document.querySelectorAll(".epub-topsheet .epub-panel-head").forEach((head) => {
+    const p = head.closest(".epub-topsheet");
+    if (p && p.id) attachTopDrag(head, p.id);
   });
   /* r33: blindaje de contenido en todas las hojas del lector —
      el arrastre dentro solo hace scroll (ver epubSheetShield). */
@@ -5389,7 +5411,9 @@ function epubToggleMenu() {
   const show = p.hidden;
   epubCloseOverlays("epub-menu");
   p.hidden = !show;
-  if (show) { epubApplyBright(); epubChromeShow(); }
+  /* r53: el menú también se estira desde su cabecera; al
+     abrir vuelve a su alto natural (sin altura en línea). */
+  if (show) { p.style.height = ""; epubApplyBright(); epubChromeShow(); }
   epubTopBackdropSync();
   epubPoke();
 }
@@ -5529,7 +5553,9 @@ function epubWsAttach() {
   if (!sh || !hd || hd.__mgWsHook) return;
   hd.__mgWsHook = true;
   /* r33: el contenido de la hoja solo hace scroll; estirar,
-     colapsar y cerrar quedan solo para el asa y la ×. */
+     colapsar y cerrar quedan solo para el asa y la ×.
+     r53: también para la cabecera completa (bloque al final
+     de esta función), que es «la parte superior del panel». */
   epubSheetShield(sh, document.getElementById("epub-ws-scroll"));
   let drag = null;
   const start = (y) => {
@@ -5563,6 +5589,63 @@ function epubWsAttach() {
     window.addEventListener("mousemove", mv);
     window.addEventListener("mouseup", up);
   });
+  /* r53 (pedido de Sergio): «que el panel se pueda extender
+     y desextender arrastrando cualquier parte de la parte
+     superior del panel» — la cabecera completa de la hoja
+     (la palabra y su franja, con la × dentro) arrastra
+     igual que el asa, con la misma mecánica start/move/end.
+     Toque y arrastre se distinguen por umbral (9 px): sin
+     pasarlo no hay arrastre y el toque llega limpio a la ×
+     (que sigue cerrando al tocarla); si el gesto lo pasa,
+     manda el arrastre y el clic que seguiría al soltar se
+     traga (guardia en captura sobre la cabecera). El
+     enganche fija el origen en la posición ACTUAL del dedo,
+     así la hoja no da ningún salto al empezar a arrastrar. */
+  const head = sh.querySelector(".epub-ws-head");
+  if (head && !head.__mgWsHeadHook) {
+    head.__mgWsHeadHook = true;
+    let suppressClickUntil = 0;
+    let hDrag = null;
+    const TH = 9;
+    const engage = (y) => { suppressClickUntil = Date.now() + 500; start(y); };
+    head.addEventListener("touchstart", (e) => {
+      if (e.touches && e.touches.length === 1) hDrag = { y0: e.touches[0].clientY, on: false };
+    }, { passive: true });
+    head.addEventListener("touchmove", (e) => {
+      if (!hDrag || !e.touches || e.touches.length !== 1) return;
+      const y = e.touches[0].clientY;
+      if (!hDrag.on) {
+        if (Math.abs(y - hDrag.y0) < TH) return;
+        hDrag.on = true;
+        engage(y);
+      }
+      move(y);
+      if (e.cancelable) e.preventDefault();
+    }, { passive: false });
+    head.addEventListener("touchend", () => { if (hDrag && hDrag.on) end(); hDrag = null; });
+    head.addEventListener("touchcancel", () => {
+      if (hDrag && hDrag.on && drag) { drag = null; sh.classList.remove("dragging"); }
+      hDrag = null;
+    });
+    head.addEventListener("mousedown", (e) => {
+      const y0 = e.clientY;
+      let on = false;
+      const mv = (ev) => {
+        if (!on) {
+          if (Math.abs(ev.clientY - y0) < TH) return;
+          on = true;
+          engage(ev.clientY);
+        }
+        move(ev.clientY);
+      };
+      const up = () => { window.removeEventListener("mousemove", mv); window.removeEventListener("mouseup", up); if (on) end(); };
+      window.addEventListener("mousemove", mv);
+      window.addEventListener("mouseup", up);
+    });
+    head.addEventListener("click", (e) => {
+      if (Date.now() < suppressClickUntil) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
+  }
 }
 
 /* Selector de diccionario de traducción (r19; en r20 MyMemory
