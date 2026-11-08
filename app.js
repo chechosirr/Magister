@@ -1789,7 +1789,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r39";
+const EPUB_BUILD = "r40";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -1849,14 +1849,34 @@ const EPUB_PAPER = {
    con la cresta luminosa al doble y cuarto (0.085→0.190),
    la raíz más sombreada (0.38→0.46), el arco del pool más
    marcado (0.08→0.13) y shade/sheen un punto más fuertes.
-   El claro no se toca: su perfil queda el de r34/r35. */
+   El claro no se toca: su perfil queda el de r34/r35.
+   r40 (Sergio, tras probar la r38): «Mejora el tema oscuro.
+   Vuelve a poner el cilindro pero que no se vea tan
+   pronunciado. El tema claro déjalo como está porque está
+   perfecto». Fuera la duna en oscuro: vuelve el CILINDRO de
+   la r34 — la banda definida de entonces (raíz en sombra
+   0.40, cresta luminosa curva en su sitio, caída 0.16 y fin
+   a los 170 px físicos; la banda vive sobre el elemento de
+   320 px, así que los topes van escritos en las posiciones
+   físicas de la r34: cresta al 15,9 % = 51 px, caída al
+   36,9 % ≈ 118 px, fin al 53,1 % = 170 px) — pero MENOS
+   pronunciado: la cresta baja de 0.30 a 0.225 (pico medido
+   objetivo ~85–90 frente a los 102,3 de r34) y lleva hombros
+   a ambos lados (0.10 subiendo, 0.12 bajando) que la
+   redondean: la meseta ya no es la línea brillante de 9 px
+   de r34, sin llegar al lavado ancho de la duna. El arco y
+   shade/sheen del bloque vuelven a la familia de r34 con la
+   cresta igualmente atenuada (en la arquitectura actual de
+   doblez unificado el componente vivo es `band`; quedan
+   coherentes por si el pool de franjas se reactiva). El
+   claro NO se toca: su bloque queda byte a byte igual. */
 const EPUB_CURL_TONES = {
   oscuro: {
-    arc: "linear-gradient(90deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.14) 22%, rgba(255,255,255,0.13) 42%, rgba(255,255,255,0.055) 62%, rgba(0,0,0,0.10) 82%, rgba(0,0,0,0.30) 100%)",
-    arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.14) 22%, rgba(255,255,255,0.13) 42%, rgba(255,255,255,0.055) 62%, rgba(0,0,0,0.10) 82%, rgba(0,0,0,0.30) 100%)",
+    arc: "linear-gradient(90deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.12) 20%, rgba(255,255,255,0.22) 40%, rgba(255,255,255,0.06) 58%, rgba(0,0,0,0.18) 78%, rgba(0,0,0,0.36) 100%)",
+    arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.12) 20%, rgba(255,255,255,0.22) 40%, rgba(255,255,255,0.06) 58%, rgba(0,0,0,0.18) 78%, rgba(0,0,0,0.36) 100%)",
     cast: "rgba(0,0,0,0.42)",
-    band: "linear-gradient(90deg, rgba(0,0,0,0.46) 0%, rgba(0,0,0,0.29) 7%, rgba(0,0,0,0.10) 14%, rgba(255,255,255,0.068) 21%, rgba(255,255,255,0.142) 28%, rgba(255,255,255,0.190) 35%, rgba(255,255,255,0.174) 43%, rgba(255,255,255,0.126) 53%, rgba(255,255,255,0.077) 65%, rgba(255,255,255,0.036) 78%, rgba(255,255,255,0.010) 89%, rgba(0,0,0,0) 100%)",
-    shade: 0.34, sheen: 0.22,
+    band: "linear-gradient(90deg, rgba(0,0,0,0.40) 0%, rgba(0,0,0,0.24) 4.4%, rgba(255,255,255,0.10) 8.8%, rgba(255,255,255,0.225) 15.9%, rgba(255,255,255,0.12) 23.8%, rgba(0,0,0,0.05) 30%, rgba(0,0,0,0.16) 36.9%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
+    shade: 0.30, sheen: 0.18,
     wash: "linear-gradient(90deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
     washPrev: "linear-gradient(270deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
   },
