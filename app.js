@@ -243,9 +243,9 @@ function escaparateHtml() {
     <img src="${HERO_IMG}" alt="" aria-hidden="true" class="bg" loading="eager" decoding="async">
     <div class="veil" aria-hidden="true"></div>
     <div class="front">
-      <p class="eyebrow">Biblioteca en línea · Obras maestras en español</p>
+      <p class="eyebrow">Biblioteca en línea · Obras maestras de la historia</p>
       <p class="brand metallic-text">MAGISTER</p>
-      <p class="lede">Los grandes clásicos en español. Con tu cuenta lees una muestra gratuita de cada libro; con la suscripción, la biblioteca completa.</p>
+      <p class="lede">Lo mejor de todos los tiempos. Con tu cuenta lees una muestra gratuita de cada libro; con la suscripción, la biblioteca completa.</p>
       <div class="search-slot">${searchBoxHtml({ dark: true })}</div>
     </div>
   </section>`;
@@ -1789,7 +1789,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r43";
+const EPUB_BUILD = "r44";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -2346,18 +2346,14 @@ function epubCloseOverlays(except) {
    selección ni de gestos): lo usa también la rendition oculta
    que prepara las páginas vecinas de otra sección para el
    volteo. */
-function epubApplyThemeToDoc(contents) {
-  const t = EPUB_THEMES[epubThemeName] || EPUB_THEMES.oscuro;
-  const doc = contents && contents.document;
-  if (!doc || !doc.head) return;
-  let st = doc.getElementById("magister-epub-theme");
-  if (!st) {
-    st = doc.createElement("style");
-    st.id = "magister-epub-theme";
-    doc.head.appendChild(st);
-  }
-  st.textContent =
-    "html, body { background: " + t.bg + " !important; }" +
+/* El texto CSS de un tema (fondo/tinta/encabezados/enlace y el
+   blindaje anti-selección) tal como se inyecta en el documento
+   del libro. Vive en su propia función porque el volteo (r44)
+   lo reutiliza para vestir de CLARO el anverso de la hoja
+   durante los pases en tema oscuro. La salida es la de siempre,
+   carácter a carácter. */
+function epubThemeCssText(t) {
+  return "html, body { background: " + t.bg + " !important; }" +
     "body { color: " + t.ink + " !important; font-family: Georgia, 'Times New Roman', serif !important; line-height: 1.75 !important; }" +
     "h1, h2, h3 { color: " + t.head + " !important; }" +
     "a { color: " + t.link + " !important; }" +
@@ -2369,6 +2365,19 @@ function epubApplyThemeToDoc(contents) {
        única selección es la nuestra (marca propia por rango). */
     "html, body, body * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }" +
     "::selection { background: transparent !important; }";
+}
+
+function epubApplyThemeToDoc(contents) {
+  const t = EPUB_THEMES[epubThemeName] || EPUB_THEMES.oscuro;
+  const doc = contents && contents.document;
+  if (!doc || !doc.head) return;
+  let st = doc.getElementById("magister-epub-theme");
+  if (!st) {
+    st = doc.createElement("style");
+    st.id = "magister-epub-theme";
+    doc.head.appendChild(st);
+  }
+  st.textContent = epubThemeCssText(t);
 }
 
 function epubStyleContents(contents) {
@@ -3081,9 +3090,35 @@ async function epubCurlPoolBuild() {
   const fRect = frame.getBoundingClientRect();
   const step = stage.clientWidth;
   const html = "<!DOCTYPE html>\n" + c.document.documentElement.outerHTML;
+  /* r44 (Sergio): «en el tema oscuro, al hacer el movimiento de
+     cambio de página, quiero que el anverso de la página tenga
+     el mismo color que el tema claro». En tema OSCURO se
+     prepara aquí, en reposo y con la capa del volteo oculta,
+     la variante CLARA de la página actual: un clon del
+     documento vivo (que NO se toca) con su hoja de tema
+     reescrita a los valores exactos del tema claro — mismo
+     papel #faf7f0 y misma tinta oscura, para que el anverso en
+     movimiento se vea como una página del tema claro y su
+     texto siga legible (con la tinta blanca del oscuro sobre
+     papel claro no se leería nada). Como queda cargada desde
+     el reposo, al empezar el pase el anverso ya está pintado
+     de claro: no hay salto ni flash. En tema claro no hace
+     falta variante: el anverso ya es el claro. */
+  let curLight = null;
+  if (epubThemeName === "oscuro") {
+    try {
+      const rootClone = c.document.documentElement.cloneNode(true);
+      const stEl = rootClone.querySelector("#magister-epub-theme");
+      if (stEl) {
+        stEl.textContent = epubThemeCssText(EPUB_THEMES.claro);
+        curLight = "<!DOCTYPE html>\n" + rootClone.outerHTML;
+      }
+    } catch { curLight = null; }
+  }
   const D = {
     ready: true, W: step, H: stage.clientHeight, step,
     cur: { html, frameW: frame.offsetWidth, frameH: frame.offsetHeight, offX: Math.round(fRect.left - sRect.left) },
+    curLight,
     next: null, prev: null,
   };
   let idx = -1, startPage = 1, endPage = 1, endTotal = 1;
@@ -3127,14 +3162,25 @@ function epubCurlPoolRender(D) {
      las franjas llevan el fondo OPACO del tema bajo el texto —
      nada de la página de detrás se trasluce a través del anverso.
      (El reverso conserva su papel blanquecino translúcido.) */
+  /* r44: el ANVERSO (la zona plana de la hoja durante el pase)
+     en tema oscuro lleva la variante clara preparada por el
+     pool, con el papel del claro también como fondo del
+     contenedor; en tema claro lleva la página de siempre. La
+     solapa (el reverso) sigue con la página en el tema vigente
+     bajo su papel translúcido, como siempre. La zona plana
+     solo se ve durante el movimiento: en reposo la capa del
+     volteo está oculta y la página visible es la del visor,
+     en su tema. */
+  const faceLight = epubThemeName === "oscuro" && !!D.curLight;
+  const flatHtml = faceLight ? D.curLight : D.cur.html;
   const flatWrap = document.getElementById("epub-curl-flat");
-  if (flatWrap) flatWrap.style.background = themeBg;
+  if (flatWrap) flatWrap.style.background = faceLight ? EPUB_THEMES.claro.bg : themeBg;
   const flatF = document.querySelector("#epub-curl-flat iframe");
   if (flatF) {
     flatF.style.width = D.cur.frameW + "px";
     flatF.style.height = D.cur.frameH + "px";
     flatF.style.transform = "translateX(" + D.cur.offX + "px)";
-    if (flatF.__mgHtml !== D.cur.html) { flatF.__mgHtml = D.cur.html; flatF.srcdoc = D.cur.html; }
+    if (flatF.__mgHtml !== flatHtml) { flatF.__mgHtml = flatHtml; flatF.srcdoc = flatHtml; }
   }
   /* Solapa diagonal (r18): el fantasma espejado es un clon más de
      la página actual (el JS lo refleja con una matriz al doblar);
@@ -3321,7 +3367,10 @@ function epubCurlTryBegin(g, x, y) {
   const cast = document.getElementById("epub-curl-cast");
   const wash = document.getElementById("epub-curl-wash");
   const flatWrap = document.getElementById("epub-curl-flat");
-  if (flatWrap) { flatWrap.style.background = themeBg; flatWrap.style.clipPath = ""; }
+  /* r44: el fondo tras el anverso acompaña su color — papel
+     del claro en los pases del tema oscuro; el del tema en
+     los del claro. */
+  if (flatWrap) { flatWrap.style.background = (epubThemeName === "oscuro" && D.curLight) ? EPUB_THEMES.claro.bg : themeBg; flatWrap.style.clipPath = ""; }
   if (epubCurlStripEls) for (const s of epubCurlStripEls) s.frontEl.style.background = themeBg;
   if (wash) wash.style.background = g.dir > 0 ? T.wash : T.washPrev;
   /* La geometría activa es la solapa de doblez (diagonal en
