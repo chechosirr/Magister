@@ -736,8 +736,18 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
 .epub-toc {
   position: absolute; top: 10px; right: 10px; z-index: 75;
   width: min(78vw, 300px); max-height: 70%; overflow-y: auto;
-  background: #17171c; color: #f2f2f4; border: 1px solid rgba(255,255,255,0.14);
+  color: #f2f2f4; border: 1px solid rgba(255,255,255,0.14);
   border-radius: 12px; box-shadow: 0 14px 34px rgba(0,0,0,0.5); padding: 12px;
+/* r52 (pedido de Sergio): las hojas del lector pasan a
+     fondo «liquid glass» — translúcido con desenfoque fuerte
+     del fondo (blur + saturación): se insinúa la luz y el
+     color de la página de atrás, pero su texto jamás se lee
+     a través. El tinte por defecto es el del tema Oscuro;
+     Claro y Menta llevan el suyo (reglas [data-epub-theme]
+     tras la hoja de palabra). */
+  background: rgba(26, 26, 33, 0.74);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
 }
 
 .epub-toc[hidden] { display: none; }
@@ -754,10 +764,16 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
      .metallic-text, recortado al texto), SIN halo, sin
      resplandor y sin el contorno azul de r34: se retira todo
      el tratamiento azul (fuera el text-shadow). */
-  background: linear-gradient(120deg, #ffffff 0%, #c2c9d4 35%, #f4f6f9 55%, #98a2b1 80%, #e8ecf1 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  /* r52 (pedido de Sergio): los títulos de sección pasan
+     a AZUL (familia del #3b82f6 del lector), aclarado a
+     #93c5fd para que contraste sobre el cristal oscuro;
+     fuera el plateado metálico de r35. En Claro y Menta el
+     tono sube a #bfdbfe (regla por tema tras la hoja de
+     palabra): el cristal deja pasar más luz de la página.
+     Tonos fijados por medición: con un paso menos, el
+     título de la paleta — directo sobre el cristal, sin
+     respaldo ni cuadro firme — quedaba en ~3,9:1. */
+  color: #93c5fd;
 }
 
 /* Paneles desde arriba (r19): índice y buscador caen anclados
@@ -878,7 +894,17 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
 .epub-dict {
   position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 80;
   max-width: 560px; margin: 0 auto; max-height: 46%; overflow-y: auto;
-  background: #17171c; color: #f2f2f4;
+  color: #f2f2f4;
+/* r52 (pedido de Sergio): las hojas del lector pasan a
+     fondo «liquid glass» — translúcido con desenfoque fuerte
+     del fondo (blur + saturación): se insinúa la luz y el
+     color de la página de atrás, pero su texto jamás se lee
+     a través. El tinte por defecto es el del tema Oscuro;
+     Claro y Menta llevan el suyo (reglas [data-epub-theme]
+     tras la hoja de palabra). */
+  background: rgba(26, 26, 33, 0.74);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
   border: 1px solid color-mix(in srgb, var(--brass) 55%, transparent);
   border-radius: 14px; box-shadow: 0 16px 38px rgba(0,0,0,0.55);
   padding: 14px 16px 12px;
@@ -1017,10 +1043,16 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
      .metallic-text, recortado al texto), SIN halo, sin
      resplandor y sin el contorno azul de r34: se retira todo
      el tratamiento azul (fuera el text-shadow). */
-  background: linear-gradient(120deg, #ffffff 0%, #c2c9d4 35%, #f4f6f9 55%, #98a2b1 80%, #e8ecf1 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  /* r52 (pedido de Sergio): los títulos de sección pasan
+     a AZUL (familia del #3b82f6 del lector), aclarado a
+     #93c5fd para que contraste sobre el cristal oscuro;
+     fuera el plateado metálico de r35. En Claro y Menta el
+     tono sube a #bfdbfe (regla por tema tras la hoja de
+     palabra): el cristal deja pasar más luz de la página.
+     Tonos fijados por medición: con un paso menos, el
+     título de la paleta — directo sobre el cristal, sin
+     respaldo ni cuadro firme — quedaba en ~3,9:1. */
+  color: #93c5fd;
 }
 
 .epub-recolor .epub-palette-title { margin-top: 10px; }
@@ -1081,7 +1113,17 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
 .epub-wordsheet {
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 82;
   display: flex; flex-direction: column;
-  background: #17171c; color: #f2f2f4;
+  color: #f2f2f4;
+/* r52 (pedido de Sergio): las hojas del lector pasan a
+     fondo «liquid glass» — translúcido con desenfoque fuerte
+     del fondo (blur + saturación): se insinúa la luz y el
+     color de la página de atrás, pero su texto jamás se lee
+     a través. El tinte por defecto es el del tema Oscuro;
+     Claro y Menta llevan el suyo (reglas [data-epub-theme]
+     tras la hoja de palabra). */
+  background: rgba(26, 26, 33, 0.74);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
   border-top: 1px solid color-mix(in srgb, var(--brass) 55%, transparent);
   border-radius: 16px 16px 0 0; box-shadow: 0 -14px 38px rgba(0,0,0,0.55);
   transition: height .22s ease;
@@ -1111,7 +1153,11 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
 
 .epub-ws-box {
   border: 1px solid rgba(255,255,255,0.13); border-radius: 12px;
-  padding: 10px 12px; background: rgba(255,255,255,0.04);
+  padding: 10px 12px;
+  /* r52: sobre el cristal, los cuadros (Significado /
+     Traducción) guardan una capa más firme para que las
+     definiciones se lean perfectas. */
+  background: rgba(13, 13, 18, 0.52);
 }
 
 .epub-ws-box + .epub-ws-box { margin-top: 10px; }
@@ -1128,11 +1174,40 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
      .metallic-text, recortado al texto), SIN halo, sin
      resplandor y sin el contorno azul de r34: se retira todo
      el tratamiento azul (fuera el text-shadow). */
-  background: linear-gradient(120deg, #ffffff 0%, #c2c9d4 35%, #f4f6f9 55%, #98a2b1 80%, #e8ecf1 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  /* r52 (pedido de Sergio): los títulos de sección pasan
+     a AZUL (familia del #3b82f6 del lector), aclarado a
+     #93c5fd para que contraste sobre el cristal oscuro;
+     fuera el plateado metálico de r35. En Claro y Menta el
+     tono sube a #bfdbfe (regla por tema tras la hoja de
+     palabra): el cristal deja pasar más luz de la página.
+     Tonos fijados por medición: con un paso menos, el
+     título de la paleta — directo sobre el cristal, sin
+     respaldo ni cuadro firme — quedaba en ~3,9:1. */
+  color: #93c5fd;
 }
+
+/* r52: tinte del cristal y azul de los títulos por tema.
+   En Claro la página crema deja pasar más luz a través del
+   cristal (y en Menta, la suya verdosa): el tinte se hace
+   cálido/verdoso y un punto más firme, y los títulos suben
+   al azul más claro de la familia (#bfdbfe) para no perder
+   contraste.
+   La palabra elegida (.epub-ws-word / .epub-dict-word) NO
+   es título de sección: se queda como está. */
+.epub-shell[data-epub-theme="claro"] .epub-toc,
+.epub-shell[data-epub-theme="claro"] .epub-dict,
+.epub-shell[data-epub-theme="claro"] .epub-wordsheet { background: rgba(24, 20, 15, 0.78); }
+
+.epub-shell[data-epub-theme="menta"] .epub-toc,
+.epub-shell[data-epub-theme="menta"] .epub-dict,
+.epub-shell[data-epub-theme="menta"] .epub-wordsheet { background: rgba(12, 28, 26, 0.76); }
+
+.epub-shell[data-epub-theme="claro"] .epub-toc-title,
+.epub-shell[data-epub-theme="claro"] .epub-palette-title,
+.epub-shell[data-epub-theme="claro"] .epub-ws-box-title,
+.epub-shell[data-epub-theme="menta"] .epub-toc-title,
+.epub-shell[data-epub-theme="menta"] .epub-palette-title,
+.epub-shell[data-epub-theme="menta"] .epub-ws-box-title { color: #bfdbfe; }
 
 /* Selector de diccionario de traducción (r19) y rótulo de la
    variante sin acentos del diccionario local. */

@@ -1857,7 +1857,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r51";
+const EPUB_BUILD = "r52";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -2538,6 +2538,11 @@ function epubSyncChrome() {
   const t = EPUB_THEMES[epubThemeName] || EPUB_THEMES.oscuro;
   const stage = document.getElementById("epub-stage");
   if (stage) stage.style.background = t.bg;
+  /* r52: el nombre del tema queda en la cáscara para que el
+     CSS pinte el cristal de las hojas y el azul de sus
+     títulos acorde al tema (reglas [data-epub-theme]). */
+  const shellEl = document.getElementById("epub-shell");
+  if (shellEl) shellEl.setAttribute("data-epub-theme", epubThemeName);
   const btn = document.getElementById("epub-theme-btn");
   /* r48: la etiqueta del botón «Tema» nombra el tema vigente
      entre los tres (Claro · Oscuro · Menta). */
