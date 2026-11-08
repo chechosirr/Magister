@@ -535,6 +535,10 @@ h1.view-title.center { text-align: center; }
 /* «Mis chats»: registro de conversaciones del cliente */
 .chatsview { padding-top: 26px; }
 .chats-title { font-size: 24px; margin: 0 0 6px; }
+/* r39: «Iniciar un chat nuevo» en «Mis chats» — el mismo botón
+   azul de la pantalla de chat finalizado (clases chatview-endbtn
+   + chatview-newbtn); aquí solo se le da su sitio en la vista. */
+.chats-newbtn { display: inline-block; margin: 4px 0 14px; }
 .chats-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
 .chats-item { display: block; width: 100%; text-align: left; background: var(--card, #14151a); border: 1px solid rgba(140, 140, 160, 0.28); border-radius: 14px; padding: 12px 14px; cursor: pointer; font: inherit; color: inherit; }
 .chats-d { font-size: 12px; opacity: 0.65; }

@@ -1259,7 +1259,11 @@ function openChat(intent) {
    SU cuenta (la conversación activa y las finalizadas archivadas,
    en solo lectura); sin cuenta, de las conversaciones de este
    dispositivo. La activa abre el chat normal para seguir
-   escribiendo; cualquier otra se lee con /conv en solo lectura. */
+   escribiendo; cualquier otra se lee con /conv en solo lectura.
+   r39 (pedido de Sergio): la vista lleva además el botón azul
+   «Iniciar un chat nuevo» — esta entrada NO es Ayuda, así que
+   el botón arranca el chat DIRECTO con el flujo normal (sin el
+   vestíbulo de la r37, que es solo de Ayuda). */
 let chatHistList = null;   // null = cargando
 let chatHistView = null;   // { msgs, finalizada } del hilo en lectura
 
@@ -1281,6 +1285,7 @@ function chatsViewHtml() {
   return `<section class="chatsview">
     <h2 class="chats-title">Mis chats</h2>
     <p class="dim">Tu registro de conversaciones con Magister. La activa se puede seguir escribiendo; las finalizadas quedan en solo lectura.</p>
+    <button type="button" class="chatview-endbtn chatview-newbtn chats-newbtn" data-action="chats-new">Iniciar un chat nuevo</button>
     <div class="chats-list">${body}</div>
   </section>`;
 }
@@ -1466,6 +1471,14 @@ document.addEventListener("click", async (e) => {
   else if (action === "chats-back") go({ name: "chats" });
   else if (action === "chat-finalize") chatFinalize();
   else if (action === "chat-new") { chatResetForNew(); render(); chatStart(); }
+  /* r39: «Iniciar un chat nuevo» desde «Mis chats»: arranca el
+     chat DIRECTO con el flujo normal (el vestíbulo de la r37 es
+     solo de Ayuda). Es un chat nuevo genérico: va con el intent
+     «ayuda» (el saludo predeterminado) — con el intent «libro»
+     un visitante sin cuenta rebotaría a «Mi cuenta». Si la
+     conversación sigue activa, el servicio la reutiliza tal
+     cual; si estaba finalizada, nace una nueva con el saludo. */
+  else if (action === "chats-new") { chatLobby = false; chatResetForNew(); openChat("ayuda"); }
   else if (action === "goto-home") { viewHistory = []; go({ name: "home" }, { replace: true }); }
   else if (action === "goto-library") go({ name: "library" });
   else if (action === "goto-settings") { settingsMsg = null; go({ name: "account-settings" }); }
@@ -1776,7 +1789,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r38";
+const EPUB_BUILD = "r39";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
