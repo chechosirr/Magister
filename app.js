@@ -1789,7 +1789,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r47";
+const EPUB_BUILD = "r48";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -1834,6 +1834,19 @@ const EPUB_THEMES = {
      #45454b. */
   oscuro: { bg: "#323237", ink: "#ffffff", head: "#ffffff", link: "#d9ac55" },
   claro: { bg: "#faf7f0", ink: "#2a251e", head: "#171310", link: "#8a5a12" },
+  /* r48 (Sergio, con su foto photo-93.jpg de un color liso):
+     «Agrégale otro tema de este color también». TERCER tema
+     del lector, «Menta»: fondo #bde5e1 EXACTO (el color
+     medido de su foto: promedio y centro, un menta/aguamarina
+     pálido). Como es fondo claro, su tinta es la oscura del
+     tema claro (#2a251e), sus encabezados los del claro
+     (#171310) y su enlace el del claro (#8a5a12) — la misma
+     familia, sin ajuste extra: sobre el menta conserva el
+     mismo papel de acento que sobre el papel del claro. Su
+     papel de reverso y sus tonos de doblez van en EPUB_PAPER
+     y EPUB_CURL_TONES con la receta del claro sobre su base.
+     Los temas claro y oscuro NO cambian en nada. */
+  menta: { bg: "#bde5e1", ink: "#2a251e", head: "#171310", link: "#8a5a12" },
 };
 const EPUB_CHROME_MS = 3000;
 /* Papel del reverso de la hoja al voltear (r16): blanquecino
@@ -1855,6 +1868,14 @@ const EPUB_PAPER = {
      El papel del claro NO se toca. */
   oscuro: "rgba(77,77,84,0.88)",
   claro: "rgba(255,253,246,0.88)",
+  /* r48: papel del reverso MENTA con la receta del claro:
+     el tinte del propio fondo aclarado un punto (bg
+     (189,229,225) + 7 por canal → (196,236,232)) al mismo
+     alfa 0.88; su compuesto sobre la página menta levanta
+     ≈+6 de luminancia, como el del claro sobre la suya
+     (≈+5). El fantasma espejado queda apenas insinuado,
+     igual que en los otros dos temas. */
+  menta: "rgba(196,236,232,0.88)",
 };
 /* Tonos del volteo (r18): el sombreado vende la redondez del
    doblez y la sombra proyectada suave cae sobre la página de
@@ -1997,6 +2018,31 @@ const EPUB_CURL_TONES = {
     shade: 0.22, sheen: 0.10,
     wash: "linear-gradient(90deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.14) 55%, rgba(255,255,255,0) 100%)",
     washPrev: "linear-gradient(270deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.14) 55%, rgba(255,255,255,0) 100%)",
+  },
+  /* r48: tonos del doblez MENTA — la receta del CLARO sobre
+     la base menta (fondo ≈220 de luminancia; la solapa bajo
+     su papel ≈226). Cada alfa se elige para conservar las
+     MISMAS proporciones ρ del claro sobre su base, con negro
+     y blanco neutros en vez de la sombra cálida del claro
+     (el marrón sobre el menta enturbia; es el mismo traslado
+     neutro que la r42 hizo para el gris): raíz negra 0.23
+     (ρ 0,77, como la cálida 0.30 del claro y la negra del
+     oscuro), cresta blanca 0.16 (sobre ≈226 da ρ≈1,02, la
+     línea fina del claro), cola negra 0.10 (ρ 0,90), cast
+     negro 0.25 (ρ≈0,75), wash blanco 0.11→0.03 (el ρ≈1,018
+     del wash del claro trasladado a esta base) y el arco con
+     los negros del oscuro y su cresta blanca en 0.13
+     (ρ≈1,02). Los topes quedan en las posiciones del claro
+     (cresta 15,9 %, cola 34,5 %, fuera 53,1 %). shade/sheen
+     = los de ambos temas. */
+  menta: {
+    arc: "linear-gradient(90deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.13) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
+    arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.13) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
+    cast: "rgba(0,0,0,0.25)",
+    band: "linear-gradient(90deg, rgba(0,0,0,0.23) 0%, rgba(255,255,255,0.16) 15.9%, rgba(0,0,0,0.10) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
+    shade: 0.22, sheen: 0.10,
+    wash: "linear-gradient(90deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
+    washPrev: "linear-gradient(270deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
   },
 };
 /* Doblez de esquina al pasar de página: tamaño máximo del pliegue
@@ -2315,7 +2361,9 @@ function epubSyncChrome() {
   const stage = document.getElementById("epub-stage");
   if (stage) stage.style.background = t.bg;
   const btn = document.getElementById("epub-theme-btn");
-  if (btn) btn.textContent = epubThemeName === "claro" ? T("Tema: Claro") : T("Tema: Oscuro");
+  /* r48: la etiqueta del botón «Tema» nombra el tema vigente
+     entre los tres (Claro · Oscuro · Menta). */
+  if (btn) btn.textContent = epubThemeName === "claro" ? T("Tema: Claro") : epubThemeName === "menta" ? T("Tema: Menta") : T("Tema: Oscuro");
 }
 
 /* ------------------------------------- controles que se ocultan */
@@ -4079,7 +4127,13 @@ function epubFontStep(delta) {
 }
 
 function epubToggleTheme() {
-  epubThemeName = epubThemeName === "claro" ? "oscuro" : "claro";
+  /* r48: el botón «Tema» recorre los TRES temas en el orden
+     Claro · Oscuro · Menta: Oscuro → Claro → Menta → Oscuro
+     (el primer salto, Oscuro→Claro, es el de siempre). La
+     elección persiste por la vía de siempre (epubSaveSettings
+     guarda el nombre y la carga lo acepta si el tema existe
+     en EPUB_THEMES). */
+  epubThemeName = epubThemeName === "oscuro" ? "claro" : epubThemeName === "claro" ? "menta" : "oscuro";
   epubSaveSettings();
   epubSyncChrome();
   if (epubRendition) {
