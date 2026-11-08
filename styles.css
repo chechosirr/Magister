@@ -1221,7 +1221,10 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
    medio del pliegue y rotada con él; sin recorte de capa puede
    asomar fuera del rectángulo del libro. */
 .epub-curl .cv-cast {
-  position: absolute; left: 0; top: 0; width: 52px; height: 2600px;
+  /* r51 (prueba r50p, aprobada por Sergio y publicada): la sombra proyectada se
+     ensancha de 52 a 120 px para que su degradado difuso
+     (castGrad) caiga suave sobre la página revelada. */
+  position: absolute; left: 0; top: 0; width: 120px; height: 2600px;
   transform-origin: 0 0; pointer-events: none; display: none;
 }
 

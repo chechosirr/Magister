@@ -1857,7 +1857,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r50";
+const EPUB_BUILD = "r51";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -2084,7 +2084,28 @@ const EPUB_CURL_TONES = {
     arc: "linear-gradient(90deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.01) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
     arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.01) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
     cast: "rgba(0,0,0,0.25)",
-    band: "linear-gradient(90deg, rgba(0,0,0,0.23) 0%, rgba(255,255,255,0.01) 15.9%, rgba(0,0,0,0.10) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
+    band: "linear-gradient(90deg, rgba(0,0,0,0.29) 0%, rgba(1,1,1,0.255) 3.5%, rgba(6,6,6,0.171) 7.2%, rgba(25,25,25,0.078) 10.8%, rgba(97,97,97,0.025) 13.7%, rgba(255,255,255,0.01) 15.9%, rgba(0,0,0,0.10) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
+    /* r51 (llega de la prueba r50p del preview, aprobada
+       por Sergio y publicada): raíz del
+       doblez un poquito más oscura (0.23 → 0.29) y sombra
+       proyectada difusa castGrad (ver la nota en claro).
+       r50p2: pico de la sombra 0.13 → 0.20 (Sergio: «un
+       poco más visible la sombra»), paradas intermedias
+       en la misma proporción.
+       r50p4: Sergio: «la sombra quiero que se note» —
+       pico 0.20 → 0.31 (×1,55, paradas en la misma
+       proporción; el claro queda en 0.25 apuntando a
+       −42…−48 de luminancia a +5 px del pliegue).
+       r50p3: base del doblez más redonda —
+       Sergio: «que se mire más abultado redondo, que no
+       se vea tan plano». El tramo raíz→cresta (0–15,9 %)
+       deja de ser una rampa recta: lleva paradas
+       intermedias (3,5/7,2/10,8/13,7 %) calculadas con
+       una curva suave (smoothstep sobre la interpolación
+       premultiplicada raíz→cresta): la oscuridad se
+       sostiene junto a la base y luego rueda hacia la
+       cresta. Cresta, cola y borde libre intactos. */
+    castGrad: "linear-gradient(90deg, rgba(0,0,0,0.31) 0%, rgba(0,0,0,0.167) 30%, rgba(0,0,0,0.059) 62%, rgba(0,0,0,0) 100%)",
     shade: 0.22, sheen: 0.10,
     /* r46: wash recalibrado 0.01 → 0.007 (conservaba su
        ρ≈1,027 sobre el anverso carbón). r50: con el fondo
@@ -2108,7 +2129,59 @@ const EPUB_CURL_TONES = {
        transparente, como cuando la banda ni siquiera llegaba.
        Su render es idéntico al de r34; la duna es solo del
        tema oscuro. */
-    band: "linear-gradient(90deg, rgba(74,56,24,0.30) 0%, rgba(255,255,255,0.75) 15.9%, rgba(74,56,24,0.13) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
+    band: "linear-gradient(90deg, rgba(74,56,24,0.37) 0%, rgba(114,100,75,0.417) 3.5%, rgba(183,175,163,0.532) 7.2%, rgba(230,228,224,0.658) 10.8%, rgba(250,250,249,0.73) 13.7%, rgba(255,255,255,0.75) 15.9%, rgba(74,56,24,0.13) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
+    /* r51 (llega de la prueba r50p del preview, aprobada
+       por Sergio y publicada — Sergio con
+       su captura photo-94 de un pase en claro): «La parte
+       del doblez que está más cercana a la página de abajo
+       por el lado del cilindro quiero que se vea un poquito
+       más oscura y que proyecte una sombra tenue en la
+       página de abajo». Dos toques: (1) la RAÍZ de la banda
+       sube un poco (claro 0.30 → 0.37; oscuro/menta
+       0.23 → 0.29) — oscurecimiento leve junto a la línea
+       de doblez, sin franja dura; (2) la sombra proyectada
+       (cast) pasa de la rampa lineal de 52 px a castGrad:
+       degradado difuso en 120 px (el CSS .cv-cast se
+       ensancha igual), con el pico casi igual (0.32 → 0.34
+       en claro; 0.25 → 0.30 en oscuro/menta) y una cola
+       larga que se insinúa sobre la página revelada.
+       Calibración medida: el primer intento (pico 0.34 en
+       claro) bajaba la página revelada −60 de luminancia
+       junto al pliegue — una mancha, no una insinuación —;
+       los picos finales (claro 0.10, oscuro 0.13, menta
+       0.08) la bajan solo ~−9…−19 junto a la línea y la
+       dejan en cero a los ~120 px: sombra tenue.
+       r50p2: Sergio pidió la sombra «un
+       poco más visible» — picos ×~1,6 (claro 0.10 → 0.16,
+       oscuro 0.13 → 0.20, menta 0.08 → 0.13), paradas
+       intermedias en la misma proporción y el mismo
+       degradado difuso de 120 px.
+       r50p3: Sergio: «¿Puedes darle un
+       poco más de redondez en la base del doblez? Que se
+       mire más abultado redondo, que no se vea tan
+       plano». La `band` medida subía en RAMPA RECTA de
+       la raíz a la cresta (~1,45 de luminancia/px
+       constantes en claro): se insertan paradas
+       intermedias en el tramo raíz→cresta (3,5/7,2/10,8/
+       13,7 % de la banda) cuyos valores siguen una curva
+       suave tipo smoothstep sobre la interpolación
+       premultiplicada entre la raíz y la cresta — la
+       oscuridad de la base se sostiene un poco más y
+       luego RUEDA hacia la cresta, como el lomo de un
+       cilindro, sin escalones. La cresta (15,9 %), la
+       cola (34,5 %) y el borde libre no se mueven; igual
+       en oscuro y Menta con sus propios raíz/cresta.
+       r50p4: Sergio: «la sombra quiero
+       que se note» — el cast sube otro escalón: pico
+       0.16 → 0.25 (×1,56) y paradas intermedias en la
+       misma proporción, mismo degradado difuso de
+       120 px. Objetivo medido: la página revelada junto
+       al pliegue baja −42…−48 de luminancia a +5 px
+       (la r50p2 bajaba −28; el intento de −60 era
+       mancha). Oscuro ×1,55 (0.20 → 0.31) y Menta
+       ×1,54 (0.13 → 0.20), este último por debajo del
+       claro como siempre. */
+    castGrad: "linear-gradient(90deg, rgba(74,56,24,0.25) 0%, rgba(74,56,24,0.137) 30%, rgba(74,56,24,0.050) 62%, rgba(74,56,24,0) 100%)",
     shade: 0.22, sheen: 0.10,
     wash: "linear-gradient(90deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.14) 55%, rgba(255,255,255,0) 100%)",
     washPrev: "linear-gradient(270deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.14) 55%, rgba(255,255,255,0) 100%)",
@@ -2133,7 +2206,18 @@ const EPUB_CURL_TONES = {
     arc: "linear-gradient(90deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.13) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
     arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.13) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
     cast: "rgba(0,0,0,0.25)",
-    band: "linear-gradient(90deg, rgba(0,0,0,0.23) 0%, rgba(255,255,255,0.16) 15.9%, rgba(0,0,0,0.10) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
+    band: "linear-gradient(90deg, rgba(0,0,0,0.29) 0%, rgba(18,18,18,0.274) 3.5%, rgba(74,74,74,0.235) 7.2%, rgba(162,162,162,0.191) 10.8%, rgba(231,231,231,0.167) 13.7%, rgba(255,255,255,0.16) 15.9%, rgba(0,0,0,0.10) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
+    /* r51 (prueba r50p): raíz 0.23 → 0.29 y
+       castGrad difuso, como en claro (ver la nota allí);
+       en la escala de Menta el pico es 0.08.
+       r50p2: pico 0.08 → 0.13, como en claro.
+       r50p3: base redonda como en claro (ver la nota
+       allí): paradas intermedias con la misma curva
+       suave sobre su raíz→cresta.
+       r50p4: pico de la sombra 0.13 → 0.20 (×1,54,
+       paradas en la misma proporción), por debajo del
+       claro (0.25) como hasta ahora. */
+    castGrad: "linear-gradient(90deg, rgba(0,0,0,0.20) 0%, rgba(0,0,0,0.112) 30%, rgba(0,0,0,0.037) 62%, rgba(0,0,0,0) 100%)",
     shade: 0.22, sheen: 0.10,
     wash: "linear-gradient(90deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
     washPrev: "linear-gradient(270deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
@@ -3573,8 +3657,13 @@ function epubCurlTryBegin(g, x, y) {
   if (shb) shb.style.display = "none";
   if (arc) arc.style.display = "none";
   if (cast) {
-    cast.style.display = "";
-    cast.style.background = "linear-gradient(90deg, " + T.cast + " 0%, rgba(0,0,0,0) 100%)";
+    /* r51 (prueba r50p): el CSS de .cv-cast trae
+       display:none y el JS solo asignaba "" — la sombra
+       proyectada NUNCA se veía (medido: la página revelada
+       quedaba plana junto al doblez). Se enciende de verdad
+       con "block" para poder probar la sombra tenue. */
+    cast.style.display = "block";
+    cast.style.background = T.castGrad || ("linear-gradient(90deg, " + T.cast + " 0%, rgba(0,0,0,0) 100%)");
   }
   if (flap) {
     flap.hidden = false;
@@ -3790,7 +3879,7 @@ function epubCurlFoldFrame(K, F) {
     if (band) band.style.transform = "translate(" + M.x.toFixed(1) + "px, " + M.y.toFixed(1) + "px) rotate(" + phi.toFixed(1) + "deg) translate(0px, -1300px)";
   }
   if (cast) {
-    cast.style.display = "";
+    cast.style.display = "block"; /* r51: ver la nota en TryBegin */
     const phiC = Math.atan2(ny, nx) * 180 / Math.PI + 180;
     cast.style.transform = "translate(" + M.x.toFixed(1) + "px, " + M.y.toFixed(1) + "px) rotate(" + phiC.toFixed(1) + "deg) translate(0px, -1300px)";
   }
