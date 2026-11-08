@@ -1789,7 +1789,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r44";
+const EPUB_BUILD = "r45";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -3092,18 +3092,18 @@ async function epubCurlPoolBuild() {
   const html = "<!DOCTYPE html>\n" + c.document.documentElement.outerHTML;
   /* r44 (Sergio): «en el tema oscuro, al hacer el movimiento de
      cambio de página, quiero que el anverso de la página tenga
-     el mismo color que el tema claro». En tema OSCURO se
-     prepara aquí, en reposo y con la capa del volteo oculta,
-     la variante CLARA de la página actual: un clon del
+     el mismo color que el tema claro». Se preparó aquí, en
+     reposo, la variante CLARA de la página actual: un clon del
      documento vivo (que NO se toca) con su hoja de tema
      reescrita a los valores exactos del tema claro — mismo
-     papel #faf7f0 y misma tinta oscura, para que el anverso en
-     movimiento se vea como una página del tema claro y su
-     texto siga legible (con la tinta blanca del oscuro sobre
-     papel claro no se leería nada). Como queda cargada desde
-     el reposo, al empezar el pase el anverso ya está pintado
-     de claro: no hay salto ni flash. En tema claro no hace
-     falta variante: el anverso ya es el claro. */
+     papel #faf7f0 y misma tinta oscura — y se aplicó al
+     ANVERSO (la zona plana).
+     r45 (Sergio, al ver la r44): «Lo del tema oscuro lo hiciste
+     al revés. El anverso debe quedar oscuro y el reverso
+     claro». La variante clara se sigue preparando igual, pero
+     ahora viste al REVERSO (la solapa), no al anverso: ver
+     epubCurlPoolRender. En tema claro no hace falta variante:
+     sus dos caras ya son las del claro. */
   let curLight = null;
   if (epubThemeName === "oscuro") {
     try {
@@ -3154,7 +3154,10 @@ async function epubCurlPoolBuild() {
 }
 
 function epubCurlPoolRender(D) {
-  const paper = EPUB_PAPER[epubThemeName] || EPUB_PAPER.oscuro;
+  /* r45: el papel del REVERSO en tema oscuro es el del tema
+     claro (EPUB_PAPER.claro, el mismo que cubre el reverso en
+     el tema claro); en claro, el de siempre. */
+  const paper = epubThemeName === "oscuro" ? EPUB_PAPER.claro : (EPUB_PAPER[epubThemeName] || EPUB_PAPER.oscuro);
   epubCurlPaper = paper;
   epubCurlTones = EPUB_CURL_TONES[epubThemeName] || EPUB_CURL_TONES.oscuro;
   const themeBg = (EPUB_THEMES[epubThemeName] || EPUB_THEMES.oscuro).bg;
@@ -3162,35 +3165,40 @@ function epubCurlPoolRender(D) {
      las franjas llevan el fondo OPACO del tema bajo el texto —
      nada de la página de detrás se trasluce a través del anverso.
      (El reverso conserva su papel blanquecino translúcido.) */
-  /* r44: el ANVERSO (la zona plana de la hoja durante el pase)
-     en tema oscuro lleva la variante clara preparada por el
-     pool, con el papel del claro también como fondo del
-     contenedor; en tema claro lleva la página de siempre. La
-     solapa (el reverso) sigue con la página en el tema vigente
-     bajo su papel translúcido, como siempre. La zona plana
-     solo se ve durante el movimiento: en reposo la capa del
-     volteo está oculta y la página visible es la del visor,
-     en su tema. */
-  const faceLight = epubThemeName === "oscuro" && !!D.curLight;
-  const flatHtml = faceLight ? D.curLight : D.cur.html;
+  /* r45 (Sergio, corrigiendo la r44: «El anverso debe quedar
+     oscuro y el reverso claro»): INVERTIDO respecto a la r44.
+     El ANVERSO (la zona plana de la hoja durante el pase)
+     vuelve a la página en el tema vigente — en oscuro, el
+     grisáceo con letras blancas de la r43 — y es el REVERSO
+     (la solapa) el que lleva la variante clara del pool bajo
+     el papel del tema claro (EPUB_PAPER.claro vía `paper`),
+     con el MISMO tratamiento que el reverso tiene en el tema
+     claro: la página clara espejada apenas insinuada bajo su
+     papel blanquecino. En tema claro nada cambia: anverso y
+     reverso son los de siempre. Todo esto solo se ve durante
+     el movimiento: en reposo la capa del volteo está oculta
+     y la página visible es la del visor, en su tema. */
   const flatWrap = document.getElementById("epub-curl-flat");
-  if (flatWrap) flatWrap.style.background = faceLight ? EPUB_THEMES.claro.bg : themeBg;
+  if (flatWrap) flatWrap.style.background = themeBg;
   const flatF = document.querySelector("#epub-curl-flat iframe");
   if (flatF) {
     flatF.style.width = D.cur.frameW + "px";
     flatF.style.height = D.cur.frameH + "px";
     flatF.style.transform = "translateX(" + D.cur.offX + "px)";
-    if (flatF.__mgHtml !== flatHtml) { flatF.__mgHtml = flatHtml; flatF.srcdoc = flatHtml; }
+    if (flatF.__mgHtml !== D.cur.html) { flatF.__mgHtml = D.cur.html; flatF.srcdoc = D.cur.html; }
   }
   /* Solapa diagonal (r18): el fantasma espejado es un clon más de
      la página actual (el JS lo refleja con una matriz al doblar);
-     el papel translúcido va encima y lo deja apenas insinuado. */
+     el papel translúcido va encima y lo deja apenas insinuado.
+     r45: en tema oscuro ese clon es la variante CLARA del pool
+     y el papel es el del tema claro — el reverso queda claro. */
+  const flapHtml = (epubThemeName === "oscuro" && D.curLight) ? D.curLight : D.cur.html;
   const flapF = document.querySelector("#epub-curl-flap iframe");
   if (flapF) {
     flapF.style.width = D.cur.frameW + "px";
     flapF.style.height = D.cur.frameH + "px";
     flapF.style.transform = "translateX(" + D.cur.offX + "px)";
-    if (flapF.__mgHtml !== D.cur.html) { flapF.__mgHtml = D.cur.html; flapF.srcdoc = D.cur.html; }
+    if (flapF.__mgHtml !== flapHtml) { flapF.__mgHtml = flapHtml; flapF.srcdoc = flapHtml; }
   }
   const flapPaper = document.querySelector("#epub-curl-flap .cv-flap-paper");
   if (flapPaper) flapPaper.style.background = paper;
@@ -3367,10 +3375,11 @@ function epubCurlTryBegin(g, x, y) {
   const cast = document.getElementById("epub-curl-cast");
   const wash = document.getElementById("epub-curl-wash");
   const flatWrap = document.getElementById("epub-curl-flat");
-  /* r44: el fondo tras el anverso acompaña su color — papel
-     del claro en los pases del tema oscuro; el del tema en
-     los del claro. */
-  if (flatWrap) { flatWrap.style.background = (epubThemeName === "oscuro" && D.curLight) ? EPUB_THEMES.claro.bg : themeBg; flatWrap.style.clipPath = ""; }
+  /* r45: el fondo tras el anverso es siempre el del tema
+     vigente (la r44 lo pintaba con el papel del claro en los
+     pases del tema oscuro — quedó al revés y se derogó: el
+     anverso queda oscuro y el claro es el reverso). */
+  if (flatWrap) { flatWrap.style.background = themeBg; flatWrap.style.clipPath = ""; }
   if (epubCurlStripEls) for (const s of epubCurlStripEls) s.frontEl.style.background = themeBg;
   if (wash) wash.style.background = g.dir > 0 ? T.wash : T.washPrev;
   /* La geometría activa es la solapa de doblez (diagonal en
