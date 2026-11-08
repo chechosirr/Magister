@@ -544,7 +544,7 @@ function accountHtml() {
           ${authError ? `<p role="alert" class="form-error">${esc(authError)}</p>` : ""}
           ${authNotice ? `<p class="form-note">El servicio de cuentas de Magister se está activando en nuestro servidor propio. Muy pronto podrás entrar con tu cuenta desde aquí; mientras tanto, el catálogo completo ya se puede explorar.</p>` : ""}
           <button type="submit" class="btn-primary block" ${authBusy ? "disabled" : ""}>${authBusy ? "Un momento…" : "Entrar a tu biblioteca"}</button>
-          <button type="button" class="forgot-link" data-action="open-help">Olvidé mi contraseña</button>
+          <button type="button" class="forgot-link" data-action="open-help-direct">Olvidé mi contraseña</button>
         </form>
       </section>
     </div>`;
@@ -1054,6 +1054,7 @@ let chatPollTimer = null;
 let chatSending = false;
 let chatClosed = false;          // true tras «Finalizar chat» (cierre visible)
 let chatReturn = { name: "home" };
+let chatLobby = false;           // r37: vestíbulo de «Ayuda» (la conversación solo nace al tocar «Iniciar un chat nuevo»)
 
 function chatMode() { return token ? "account" : "anon"; }
 function chatMsgs() { return chatMode() === "account" ? chatAcctMsgs : chatAnonMsgs; }
@@ -1105,10 +1106,13 @@ function chatViewHtml() {
         <p class="chatview-title">Magister</p>
         <p class="chatview-sub">${chatIntent === "libro" ? "Pídenos tu libro" : chatIntent === "suscripcion" ? "Suscripción" : "Ayuda"}</p>
       </div>
-      ${!anonNeedsIntro ? (chatClosed ? `<button type="button" class="chatview-endbtn chatview-newbtn" data-action="chat-new">Iniciar un chat nuevo</button>` : `<button type="button" class="chatview-endbtn" data-action="chat-finalize">Finalizar chat</button>`) : ""}
+      ${!anonNeedsIntro && !chatLobby ? (chatClosed ? `<button type="button" class="chatview-endbtn chatview-newbtn" data-action="chat-new">Iniciar un chat nuevo</button>` : `<button type="button" class="chatview-endbtn" data-action="chat-finalize">Finalizar chat</button>`) : ""}
     </div>
-    <p class="chatview-welcome">${esc(CHAT_EXPLAIN[chatIntent])}</p>
-    ${anonNeedsIntro ? `<form id="chat-intro" class="chat-intro form-stack">
+    ${chatLobby ? "" : `<p class="chatview-welcome">${esc(CHAT_EXPLAIN[chatIntent])}</p>`}
+    ${chatLobby ? `<div class="chat-lobby">
+      <p class="chat-lobby-text">Para hablar con nosotros tienes que darle a «Iniciar un chat nuevo». Al tocarlo se abre tu chat con Magister y te respondemos en cuanto podamos.</p>
+      <button type="button" class="chatview-endbtn chatview-newbtn chat-lobby-btn" data-action="chat-lobby-start">Iniciar un chat nuevo</button>
+    </div>` : anonNeedsIntro ? `<form id="chat-intro" class="chat-intro form-stack">
       <div class="field">
         <label for="chat-name">¿Cómo te llamas?</label>
         <input id="chat-name" type="text" required maxlength="60" autocomplete="name" placeholder="Tu nombre" value="${esc(chatLoad(CHAT_NAME_KEY))}">
@@ -1220,6 +1224,12 @@ async function chatEnsureOpen() {
 }
 
 function chatStart() {
+  /* r37 (orden de Sergio): picar «Ayuda» NO abre un chat en
+     automático. La vista muestra el vestíbulo y la conversación
+     solo se crea/abre cuando el cliente toca «Iniciar un chat
+     nuevo»: mientras el vestíbulo está puesto no se llama al
+     servicio (ni conversación, ni saludo, ni aviso por correo). */
+  if (chatLobby) { chatStopPolling(); return; }
   if (chatClosed) chatResetForNew();
   chatScrollBottom();
   chatEnsureOpen();
@@ -1233,9 +1243,12 @@ function chatStopPolling() {
 }
 
 /* Entrada «Pídenos tu libro»: solo con cuenta (sin sesión → «Mi cuenta»).
-   Entrada «Ayuda»: cualquiera, con cuenta o sin ella. */
+   Entrada «Ayuda»: cualquiera, con cuenta o sin ella; desde r37
+   pasa por el vestíbulo (chatLobby): nada se crea hasta que el
+   cliente toca «Iniciar un chat nuevo». */
 function openChat(intent) {
   if (intent === "libro" && !token) { go({ name: "account" }); return; }
+  if (intent !== "ayuda") chatLobby = false;
   chatIntent = intent;
   if (view.name !== "chat") chatReturn = { ...view };
   go({ name: "chat" });
@@ -1437,9 +1450,14 @@ document.addEventListener("click", async (e) => {
   else if (action === "back-categories") goBack();
   else if (action === "goto-categories") go({ name: "categories" });
   else if (action === "open-chat") openChat("libro");
-  else if (action === "open-help") openChat("ayuda");
+  else if (action === "open-help") { chatLobby = true; openChat("ayuda"); }
+  /* «Olvidé mi contraseña» es OTRO enlace al chat (no el botón
+     Ayuda): la orden r37 manda dejar el resto de enlaces igual,
+     así que este sigue abriendo el chat directo, sin vestíbulo. */
+  else if (action === "open-help-direct") openChat("ayuda");
+  else if (action === "chat-lobby-start") { chatLobby = false; render(); chatStart(); }
   else if (action === "admin-welcome-close") closeAdminWelcome();
-  else if (action === "chat-back") go(chatReturn.name ? chatReturn : { name: "home" });
+  else if (action === "chat-back") { chatLobby = false; go(chatReturn.name ? chatReturn : { name: "home" }); }
   else if (action === "open-chats") openChats();
   else if (action === "chats-open") {
     if (el.dataset.act === "1") openChat(chatIntent);
@@ -1758,7 +1776,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r36";
+const EPUB_BUILD = "r37";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";

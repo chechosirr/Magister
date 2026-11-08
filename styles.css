@@ -400,6 +400,14 @@ h1.view-title.center { text-align: center; }
    encabezado); «Finalizar chat» conserva su rojo. */
 .chatview-endbtn.chatview-newbtn { color: #3b82f6; border-color: rgba(59, 130, 246, 0.55); }
 
+/* r37 (orden de Sergio): vestíbulo de «Ayuda». Picar «Ayuda» ya no
+   abre un chat en automático: primero se aclara que hay que darle
+   a «Iniciar un chat nuevo» (el mismo botón azul de siempre, aquí
+   centrado y un poco mayor) y solo entonces nace la conversación. */
+.chat-lobby { padding: 36px 22px; text-align: center; }
+.chat-lobby-text { color: #c9c9d4; font-size: 15px; line-height: 1.6; margin: 0 auto 22px; max-width: 350px; }
+.chat-lobby-btn { margin-left: 0; padding: 10px 20px; font-size: 14px; }
+
 /* r35: aviso de prueba al abrir un libro sin suscripción activa:
    capa centrada con velo; «Suscribirse ahora» es el botón grande
    y «Seguir con la prueba» va pequeño y debajo. */
