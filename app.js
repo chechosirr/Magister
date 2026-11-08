@@ -1789,7 +1789,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r41";
+const EPUB_BUILD = "r42";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -1889,16 +1889,41 @@ const EPUB_PAPER = {
    ≈ +70 como en r40 (86 sobre 16); los negros quedan — su
    sombra sobre el gris gana profundidad sola y la raíz sigue
    marcada bajo la base de la solapa. La geometría (posiciones
-   de los topes) no cambia: mismo cilindro, mismo sitio. */
+   de los topes) no cambia: mismo cilindro, mismo sitio.
+   r42 (Sergio, tras probar la r41): «Ponle el mismo efecto
+   que tiene el tema claro». Fuera el cilindro recalibrado:
+   el doblez oscuro adopta LA RECETA DEL CLARO trasladada a
+   su base grisácea. La banda queda con LOS MISMOS topes del
+   claro (raíz 0 % → cresta 15,9 % → cola 34,5 % → fuera
+   53,1 %; sin hombros ni topes intermedios) y cada alfa se
+   elige para que la luminancia compuesta sobre la base de
+   la solapa conserve LA MISMA PROPORCIÓN respecto a esa
+   base que el tope del claro guarda sobre su papel (≈252):
+   raíz cálida 0.30 (compuesta ≈194, ρ≈0,77) → negro 0.23
+   sobre la base gris (≈97 → ≈74); cresta blanca 0.75
+   (≈254, ρ≈1,01 — sobre papel casi blanco la cresta del
+   claro apenas suma +2: por eso trasladada casi no suma)
+   → blanco 0.01; cola cálida 0.13 (≈227, ρ≈0,90) → negro
+   0.10. La sombra cálida del claro se traslada como negro
+   neutro, coherente con el gris. Igual con el resto del
+   bloque: cast 0.32 cálido sobre su plano (ρ≈0,75) → negro
+   0.25 sobre el plano gris; wash y arco con los topes del
+   claro y sus proporciones; shade/sheen = los del claro.
+   El fondo grisáceo de r41 (#45454b, tinta y enlace) NO se
+   toca, y el claro — la referencia — tampoco: su bloque
+   queda byte a byte el de siempre. El efecto resultante en
+   oscuro es el del claro: raíz en sombra suave y marcada,
+   una línea de brillo fina en la cresta y la caída larga,
+   sin joroba luminosa. */
 const EPUB_CURL_TONES = {
   oscuro: {
-    arc: "linear-gradient(90deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.12) 20%, rgba(255,255,255,0.28) 40%, rgba(255,255,255,0.08) 58%, rgba(0,0,0,0.18) 78%, rgba(0,0,0,0.36) 100%)",
-    arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.12) 20%, rgba(255,255,255,0.28) 40%, rgba(255,255,255,0.08) 58%, rgba(0,0,0,0.18) 78%, rgba(0,0,0,0.36) 100%)",
-    cast: "rgba(0,0,0,0.42)",
-    band: "linear-gradient(90deg, rgba(0,0,0,0.40) 0%, rgba(0,0,0,0.24) 4.4%, rgba(255,255,255,0.13) 8.8%, rgba(255,255,255,0.29) 15.9%, rgba(255,255,255,0.155) 23.8%, rgba(0,0,0,0.05) 30%, rgba(0,0,0,0.16) 36.9%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
-    shade: 0.30, sheen: 0.23,
-    wash: "linear-gradient(90deg, rgba(255,255,255,0.155) 0%, rgba(255,255,255,0.04) 55%, rgba(255,255,255,0) 100%)",
-    washPrev: "linear-gradient(270deg, rgba(255,255,255,0.155) 0%, rgba(255,255,255,0.04) 55%, rgba(255,255,255,0) 100%)",
+    arc: "linear-gradient(90deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.01) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
+    arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.01) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
+    cast: "rgba(0,0,0,0.25)",
+    band: "linear-gradient(90deg, rgba(0,0,0,0.23) 0%, rgba(255,255,255,0.01) 15.9%, rgba(0,0,0,0.10) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
+    shade: 0.22, sheen: 0.10,
+    wash: "linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0) 55%, rgba(255,255,255,0) 100%)",
+    washPrev: "linear-gradient(270deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0) 55%, rgba(255,255,255,0) 100%)",
   },
   claro: {
     arc: "linear-gradient(90deg, rgba(74,56,24,0.34) 0%, rgba(74,56,24,0.08) 22%, rgba(255,255,255,0.65) 44%, rgba(74,56,24,0.05) 60%, rgba(74,56,24,0.18) 80%, rgba(74,56,24,0.34) 100%)",
