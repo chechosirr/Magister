@@ -1789,7 +1789,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r45";
+const EPUB_BUILD = "r46";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -1821,8 +1821,18 @@ const EPUB_THEMES = {
      letras del libro quedan en blanco pleno. Contraste del
      blanco sobre el gris #45454b ≈ 9,5:1 (antes ~7,6:1).
      El enlace dorado NO se toca (es acento, no «las letras»);
-     fondo grisáceo y el doblez de la r42 quedan intactos. */
-  oscuro: { bg: "#45454b", ink: "#ffffff", head: "#ffffff", link: "#d9ac55" },
+     fondo grisáceo y el doblez de la r42 quedan intactos.
+     r46 (PRUEBA, Sergio aceptó la recomendación): «Pruébalo
+     con ese tono» — el fondo oscuro baja del grisáceo #45454b
+     (plano ~69) al GRIS CARBÓN #323237 (plano ~50): un punto
+     intermedio entre el casi negro original y el grisáceo,
+     para que el reverso claro de la r45 se despegue con
+     elegancia sin destellar y la sombra del doblez se marque
+     mejor. La tinta blanca #ffffff se queda (su contraste
+     sobre el carbón sube de ~9,5:1 a ~12,7:1) y el enlace
+     dorado también. Es prueba: si no le gusta, se vuelve a
+     #45454b. */
+  oscuro: { bg: "#323237", ink: "#ffffff", head: "#ffffff", link: "#d9ac55" },
   claro: { bg: "#faf7f0", ink: "#2a251e", head: "#171310", link: "#8a5a12" },
 };
 const EPUB_CHROME_MS = 3000;
@@ -1831,8 +1841,16 @@ const EPUB_CHROME_MS = 3000;
    también translúcido. La página de debajo se trasluce a través. */
 const EPUB_PAPER = {
   /* r41: el papel oscuro sube con el nuevo fondo gris
-     manteniendo la misma relación de r40 (+27 sobre el bg). */
-  oscuro: "rgba(96,96,104,0.88)",
+     manteniendo la misma relación de r40 (+27 sobre el bg).
+     r46: con el fondo carbón #323237 (50,50,55), el papel
+     oscuro conserva la MISMA relación de la r41 (+27/+27/+29
+     por canal → 77,77,84; su compuesto sobre el fondo levanta
+     +23,9 de luminancia, igual que en r41). Es un valor hoy
+     dormido — desde la r45 el reverso oscuro usa el papel del
+     claro (ver epubCurlPoolRender) — y se mantiene coherente
+     por si el pool de franjas se reactiva. El papel del claro
+     NO se toca. */
+  oscuro: "rgba(77,77,84,0.88)",
   claro: "rgba(255,253,246,0.88)",
 };
 /* Tonos del volteo (r18): el sombreado vende la redondez del
@@ -1922,7 +1940,21 @@ const EPUB_PAPER = {
    queda byte a byte el de siempre. El efecto resultante en
    oscuro es el del claro: raíz en sombra suave y marcada,
    una línea de brillo fina en la cresta y la caída larga,
-   sin joroba luminosa. */
+   sin joroba luminosa.
+   r46 (fondo carbón #323237, plano 69,4 → 50,4): auditoría
+   de bases del bloque oscuro, como en r41/r42. La BANDA no
+   se recalibra: desde la r45 compone sobre la solapa CLARA
+   (variante del claro bajo papel del claro, base ≈252) y
+   esa base no se movió — su forma ρ ya es la del claro. El
+   CAST (negro 0.25) compone sobre la página revelada, pero
+   el negro por alfa conserva su ρ (0,75) sobre cualquier
+   base. El único blanco vivo sobre la base oscura es el
+   WASH, que va sobre el ANVERSO (la zona plana): con alfa
+   0.01 su ρ pasaba de 1,027 (sobre 69,4) a 1,041 (sobre
+   50,4); baja a 0.007 y el ρ queda en 1,028 — la misma
+   forma relativa de siempre. Arco y shade/sheen quedan
+   (componentes dormidos del pool, con la receta del claro
+   tal cual). El reverso claro de la r45 no se toca. */
 const EPUB_CURL_TONES = {
   oscuro: {
     arc: "linear-gradient(90deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.01) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
@@ -1930,8 +1962,10 @@ const EPUB_CURL_TONES = {
     cast: "rgba(0,0,0,0.25)",
     band: "linear-gradient(90deg, rgba(0,0,0,0.23) 0%, rgba(255,255,255,0.01) 15.9%, rgba(0,0,0,0.10) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
     shade: 0.22, sheen: 0.10,
-    wash: "linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0) 55%, rgba(255,255,255,0) 100%)",
-    washPrev: "linear-gradient(270deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0) 55%, rgba(255,255,255,0) 100%)",
+    /* r46: wash recalibrado 0.01 → 0.007 (ver la nota del
+       bloque): conserva su ρ≈1,027 sobre el anverso carbón. */
+    wash: "linear-gradient(90deg, rgba(255,255,255,0.007) 0%, rgba(255,255,255,0) 55%, rgba(255,255,255,0) 100%)",
+    washPrev: "linear-gradient(270deg, rgba(255,255,255,0.007) 0%, rgba(255,255,255,0) 55%, rgba(255,255,255,0) 100%)",
   },
   claro: {
     arc: "linear-gradient(90deg, rgba(74,56,24,0.34) 0%, rgba(74,56,24,0.08) 22%, rgba(255,255,255,0.65) 44%, rgba(74,56,24,0.05) 60%, rgba(74,56,24,0.18) 80%, rgba(74,56,24,0.34) 100%)",
