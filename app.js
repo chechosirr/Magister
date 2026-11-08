@@ -1789,7 +1789,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r42";
+const EPUB_BUILD = "r43";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -1813,8 +1813,16 @@ const EPUB_THEMES = {
      (contraste ~7,6:1 sobre el gris, cómodo); el enlace sube
      un punto (#d3a24a → #d9ac55) para mantener su contraste
      sobre el fondo más claro. Si la prueba no le gusta, se
-     revierte a los valores de r40. */
-  oscuro: { bg: "#45454b", ink: "#eae7de", head: "#f5f5f7", link: "#d9ac55" },
+     revierte a los valores de r40.
+     r43 (Sergio, probando la r42): «Las letras de tema negro
+     más blancas» — la tinta del oscuro pasa de #eae7de a
+     BLANCO PLENO #ffffff y los encabezados (#f5f5f7, que ya
+     eran casi blancos) lo acompañan a #ffffff: todas las
+     letras del libro quedan en blanco pleno. Contraste del
+     blanco sobre el gris #45454b ≈ 9,5:1 (antes ~7,6:1).
+     El enlace dorado NO se toca (es acento, no «las letras»);
+     fondo grisáceo y el doblez de la r42 quedan intactos. */
+  oscuro: { bg: "#45454b", ink: "#ffffff", head: "#ffffff", link: "#d9ac55" },
   claro: { bg: "#faf7f0", ink: "#2a251e", head: "#171310", link: "#8a5a12" },
 };
 const EPUB_CHROME_MS = 3000;
