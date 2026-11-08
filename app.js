@@ -109,6 +109,7 @@ async function apiCall(path, { method = "GET", body, token: tk } = {}) {
 
 const api = {
   login: (email, password) => apiCall("/auth/login", { method: "POST", body: { email, password } }),
+  register: (name, email, password) => apiCall("/auth/registro", { method: "POST", body: { name, email, password } }),
   me: (tk) => apiCall("/auth/me", { token: tk }),
   changeEmail: (tk, email) => apiCall("/auth/correo", { method: "POST", body: { email }, token: tk }),
   changePassword: (tk, actual, nueva) => apiCall("/auth/password", { method: "POST", body: { actual, nueva }, token: tk }),
@@ -134,6 +135,8 @@ const libFilter = { estante: "", favoritos: "", recientes: "" }; // buscador pro
 let authNotice = false;        // aviso de «servicio en activación» tras intentar entrar en modo muestra
 let authError = "";
 let authBusy = false;
+let authMode = "login";        // r49: «Mi cuenta» sin sesión muestra entrar o crear cuenta
+let regError = "";
 let settingsMsg = null;        // r35: aviso de «Ajustes de cuenta» {area: "email"|"pass", ok, text}
 let settingsBusy = false;
 let sampleNoticeBookId = null; // r35: libro pendiente tras el aviso de prueba (cuenta sin suscripción)
@@ -527,6 +530,38 @@ function readerHtml() {
 
 function accountHtml() {
   if (!user) {
+    /* r49: pantalla de CREAR CUENTA (registro público, orden de
+       Sergio): exactamente los campos que dictó — Nombre y
+       apellido, Correo y Contraseña (con su ojo de mostrar/
+       ocultar, como todos los de la página). El servicio crea
+       la cuenta normal (nunca admin ni suscrita), guarda solo
+       el hash y devuelve la sesión iniciada. */
+    if (authMode === "register") {
+      return `<div class="account-head">
+      <h1 class="view-title">Crear cuenta</h1>
+      <p class="intro">Con tu cuenta guardas tu biblioteca personal y tu avance de lectura en este dispositivo.</p>
+      <section aria-label="Crear una cuenta" class="card account-center" style="margin-top:24px">
+        <h2 class="font-display" style="margin:0;font-size:18px;font-weight:700">Tu cuenta de lector</h2>
+        <form id="register-form" class="form-stack" style="margin-top:16px">
+          <div class="field">
+            <label for="reg-name">Nombre y apellido</label>
+            <input id="reg-name" type="text" required autocomplete="name" placeholder="Tu nombre y apellido">
+          </div>
+          <div class="field">
+            <label for="reg-email">Correo</label>
+            <input id="reg-email" type="email" required autocomplete="email" placeholder="tu@correo.com">
+          </div>
+          <div class="field">
+            <label for="reg-password">Contraseña</label>
+            <input id="reg-password" type="password" required minlength="6" autocomplete="new-password" placeholder="Mínimo 6 caracteres">
+          </div>
+          ${regError ? `<p role="alert" class="form-error">${esc(regError)}</p>` : ""}
+          <button type="submit" class="btn-primary block" ${authBusy ? "disabled" : ""}>${authBusy ? "Un momento…" : "Crear cuenta"}</button>
+          <button type="button" class="forgot-link" data-action="goto-login">¿Ya tienes cuenta? Iniciar sesión</button>
+        </form>
+      </section>
+    </div>`;
+    }
     return `<div class="account-head">
       <h1 class="view-title">Mi cuenta</h1>
       <p class="intro">Con tu cuenta guardas tu biblioteca personal y tu avance de lectura en este dispositivo.</p>
@@ -545,6 +580,8 @@ function accountHtml() {
           ${authNotice ? `<p class="form-note">El servicio de cuentas de Magister se está activando en nuestro servidor propio. Muy pronto podrás entrar con tu cuenta desde aquí; mientras tanto, el catálogo completo ya se puede explorar.</p>` : ""}
           <button type="submit" class="btn-primary block" ${authBusy ? "disabled" : ""}>${authBusy ? "Un momento…" : "Entrar a tu biblioteca"}</button>
           <button type="button" class="forgot-link" data-action="open-help-direct">Olvidé mi contraseña</button>
+          <p class="small dim" style="margin:16px 0 0;text-align:center">¿Aún no tienes cuenta?</p>
+          <button type="button" class="btn-ghost" style="width:100%;margin-top:8px" data-action="goto-register">Crear cuenta</button>
         </form>
       </section>
     </div>`;
@@ -1486,6 +1523,11 @@ document.addEventListener("click", async (e) => {
   else if (action === "notice-subscribe") { hideSampleNotice(); sampleNoticeBookId = null; openChat("suscripcion"); }
   else if (action === "notice-continue") { hideSampleNotice(); const _nb = sampleNoticeBookId; sampleNoticeBookId = null; if (_nb != null) openBookDirect(_nb); }
   else if (action === "require-auth") go({ name: "account" });
+  /* r49: «Crear cuenta» de «Mi cuenta» abre la pantalla de
+     registro; «Iniciar sesión» de esa pantalla vuelve al
+     formulario de entrar. Solo cambian el modo del panel. */
+  else if (action === "goto-register") { authMode = "register"; authError = ""; regError = ""; render(); }
+  else if (action === "goto-login") { authMode = "login"; authError = ""; regError = ""; render(); }
   else if (action === "subscribe") go({ name: "account" });
   else if (action === "read") openChapter(id, Number(el.dataset.ch || 0));
   else if (action === "reader-exit") goBack();
@@ -1544,6 +1586,7 @@ document.addEventListener("click", async (e) => {
     try { await api.logout(token); } catch { /* se cierra igual en local */ }
     closeAdminWelcome();
     saveToken(null); token = null; user = null; libraryEntries = [];
+    authMode = "login"; authError = ""; regError = "";
     chatAcctMsgs = [];
     go({ name: "home" });
   }
@@ -1583,6 +1626,31 @@ document.addEventListener("submit", async (e) => {
       maybeShowAdminWelcome();
     } catch (err) {
       authBusy = false; authError = errorText(err); render();
+    }
+  }
+  if (form.id === "register-form") {
+    /* r49: registro público. Al crear la cuenta, la sesión
+       queda iniciada (el servicio devuelve token y usuario,
+       como en el login) y «Mi cuenta» muestra ya su panel. */
+    e.preventDefault();
+    regError = "";
+    if (!MAGISTER_API_ENABLED) {
+      authNotice = true; authMode = "login"; render(); return;
+    }
+    const name = document.getElementById("reg-name").value;
+    const email = document.getElementById("reg-email").value;
+    const pass = document.getElementById("reg-password").value;
+    authBusy = true; render();
+    try {
+      const r = await api.register(name, email, pass);
+      saveToken(r.token); token = r.token; user = r.user;
+      const lib = await api.myLibrary(token);
+      libraryEntries = lib.entries || [];
+      authBusy = false; authMode = "login";
+      render();
+      maybeShowAdminWelcome();
+    } catch (err) {
+      authBusy = false; regError = errorText(err); render();
     }
   }
   if (form.id === "settings-email-form") {
@@ -1789,7 +1857,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r48";
+const EPUB_BUILD = "r49";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
