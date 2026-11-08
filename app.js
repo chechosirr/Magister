@@ -110,6 +110,8 @@ async function apiCall(path, { method = "GET", body, token: tk } = {}) {
 const api = {
   login: (email, password) => apiCall("/auth/login", { method: "POST", body: { email, password } }),
   me: (tk) => apiCall("/auth/me", { token: tk }),
+  changeEmail: (tk, email) => apiCall("/auth/correo", { method: "POST", body: { email }, token: tk }),
+  changePassword: (tk, actual, nueva) => apiCall("/auth/password", { method: "POST", body: { actual, nueva }, token: tk }),
   logout: (tk) => apiCall("/auth/logout", { method: "POST", token: tk }),
   myLibrary: (tk) => apiCall("/library", { token: tk }),
   addToLibrary: (tk, bookId) => apiCall("/library/add", { method: "POST", body: { bookId }, token: tk }),
@@ -132,6 +134,9 @@ const libFilter = { estante: "", favoritos: "", recientes: "" }; // buscador pro
 let authNotice = false;        // aviso de «servicio en activación» tras intentar entrar en modo muestra
 let authError = "";
 let authBusy = false;
+let settingsMsg = null;        // r35: aviso de «Ajustes de cuenta» {area: "email"|"pass", ok, text}
+let settingsBusy = false;
+let sampleNoticeBookId = null; // r35: libro pendiente tras el aviso de prueba (cuenta sin suscripción)
 /* Sesión y botón «atrás» (corrección 2026-11-07, reforzada): si el
    navegador restaura la app desde su caché tras cerrarse la sesión en
    otro lado, la vista restaurada seguiría «con sesión». Tres capas:
@@ -569,11 +574,55 @@ function accountHtml() {
         </div>
         <p class="small dim" style="margin:8px 0 0;line-height:1.625">${user.subscribed
           ? "Tu cuenta tiene acceso completo: puedes leer todos los libros de la biblioteca."
-          : "Con tu cuenta lees gratis el primer capítulo de cada libro. La suscripción a Magister abre la lectura completa de toda la biblioteca; muy pronto podrás activarla aquí mismo."}</p>
+          : "Con tu cuenta lees gratis el primer capítulo de cada libro. La suscripción a Magister abre la lectura completa de toda la biblioteca: pídela por el chat y te la activamos."}</p>
+        ${!user.subscribed && !user.admin ? `<button type="button" class="btn-primary block" style="margin-top:14px" data-action="subscribe-chat">Suscríbete a Magister</button>` : ""}
       </div>
       <button type="button" class="btn-primary block" style="margin-top:24px" data-action="goto-library">Ir a tu biblioteca</button>
+      <button type="button" class="btn-ghost" style="width:100%;margin-top:12px" data-action="goto-settings">Ajustes de cuenta</button>
     </section>
     <button type="button" class="btn-logout" data-action="logout">Cerrar sesión</button>
+  </div>`;
+}
+
+/* r35: «Ajustes de cuenta» para CUALQUIER cuenta con sesión (no
+   solo el admin): cambiar su correo y su contraseña. El servicio
+   valida el formato del correo, que no lo tenga otra cuenta y que
+   la contraseña actual coincida, y guarda solo el hash PBKDF2.
+   Los campos de contraseña reciben el ojo de mostrar/ocultar como
+   todos los de la página (enhancePasswordEyes tras cada render). */
+function accountSettingsHtml() {
+  const msg = (area) => (settingsMsg && settingsMsg.area === area)
+    ? `<p class="${settingsMsg.ok ? "form-note" : "form-error"}"${settingsMsg.ok ? "" : " role=\"alert\""} style="margin:12px 0 0">${esc(settingsMsg.text)}</p>` : "";
+  return `<div style="padding-top:32px">
+    <h1 class="view-title">Ajustes de cuenta</h1>
+    <section aria-label="Cambiar correo" class="card" style="margin-top:20px">
+      <h2 class="font-display" style="margin:0;font-size:16px;font-weight:700">Correo electrónico</h2>
+      <p class="small dim" style="margin:8px 0 0">Tu correo actual es <strong>${esc(user.email)}</strong>. Si lo cambias, la próxima vez entrarás con el correo nuevo; tu sesión de ahora sigue abierta.</p>
+      <form id="settings-email-form" class="form-stack" style="margin-top:14px">
+        <div class="field">
+          <label for="settings-email">Correo nuevo</label>
+          <input id="settings-email" type="email" required autocomplete="email" placeholder="tu@correo.com">
+        </div>
+        <button type="submit" class="btn-primary block" ${settingsBusy ? "disabled" : ""}>Guardar correo</button>
+      </form>
+      ${msg("email")}
+    </section>
+    <section aria-label="Cambiar contraseña" class="card" style="margin-top:20px">
+      <h2 class="font-display" style="margin:0;font-size:16px;font-weight:700">Contraseña</h2>
+      <form id="settings-pass-form" class="form-stack" style="margin-top:14px">
+        <div class="field">
+          <label for="settings-pass-actual">Contraseña actual</label>
+          <input id="settings-pass-actual" type="password" required autocomplete="current-password">
+        </div>
+        <div class="field">
+          <label for="settings-pass-nueva">Contraseña nueva</label>
+          <input id="settings-pass-nueva" type="password" required minlength="6" autocomplete="new-password" placeholder="Mínimo 6 caracteres">
+        </div>
+        <button type="submit" class="btn-primary block" ${settingsBusy ? "disabled" : ""}>Cambiar contraseña</button>
+      </form>
+      <p class="small dim" style="margin:10px 0 0">Tu contraseña actual no se puede mostrar: está guardada con hash. Para cambiarla, escribe la actual y la nueva.</p>
+      ${msg("pass")}
+    </section>
   </div>`;
 }
 
@@ -658,6 +707,7 @@ function render() {
   else if (view.name === "reader") html = readerHtml();
   else if (view.name === "epub") html = epubHtml();
   else if (view.name === "account") html = accountHtml();
+  else if (view.name === "account-settings") html = token ? accountSettingsHtml() : `<p class="dim" style="padding-top:40px">Inicia sesión para ver los ajustes de tu cuenta.</p>`;
   else if (view.name === "admin-home") html = adminHomeHtml();
   else if (view.name === "chat") html = chatViewHtml();
   else if (view.name === "chats") html = chatsViewHtml();
@@ -793,6 +843,44 @@ function go(next, opts) {
    «Mi cuenta» para iniciar sesión (el servidor también lo exigirá). */
 function openBook(bookId) {
   if (!token) { go({ name: "account" }); return; }
+  /* r35 (pedido de Sergio): una cuenta SIN suscripción activa,
+     antes de entrar a la muestra, ve un aviso claro: solo es una
+     prueba (el primer capítulo) y el libro completo requiere
+     suscripción. Dos botones: «Suscribirse ahora» (grande, lo
+     lleva al chat con su cuenta) y «Seguir con la prueba»
+     (pequeño, debajo). El aviso sale CADA VEZ que abre un libro.
+     Con suscripción (y el admin) se entra directo, como siempre. */
+  if (user && !user.subscribed && !user.admin) { showSampleNotice(bookId); return; }
+  openBookDirect(bookId);
+}
+
+/* r35: capa del aviso de prueba (vive en <body> para sobrevivir a
+   los repintados de las vistas). */
+function showSampleNotice(bookId) {
+  sampleNoticeBookId = bookId;
+  let el = document.getElementById("sample-notice");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "sample-notice";
+    el.className = "sample-notice";
+    el.setAttribute("role", "dialog");
+    el.setAttribute("aria-modal", "true");
+    el.innerHTML = `<div class="sample-notice-card">
+      <h2 class="font-display" style="margin:0;font-size:19px;font-weight:700">Esto es una prueba</h2>
+      <p class="small dim" style="margin:10px 0 0;line-height:1.6">Sin suscripción solo puedes leer una <strong>prueba</strong> de este libro: el primer capítulo. Para leer el <strong>libro completo</strong> necesitas una suscripción a Magister.</p>
+      <button type="button" class="btn-primary block" style="margin-top:18px" data-action="notice-subscribe">Suscribirse ahora</button>
+      <button type="button" class="btn-ghost sample-notice-skip" data-action="notice-continue">Seguir con la prueba</button>
+    </div>`;
+    document.body.appendChild(el);
+  }
+  el.hidden = false;
+}
+function hideSampleNotice() {
+  const el = document.getElementById("sample-notice");
+  if (el) el.hidden = true;
+}
+
+function openBookDirect(bookId) {
   if (MAGISTER_API_ENABLED) apiCall("/chat/lectura", { method: "POST", body: { id: bookId } }).catch(() => {});
   const book = BOOK_BY_ID.get(bookId);
   if (book && book.epub) {
@@ -1010,7 +1098,7 @@ function chatViewHtml() {
         <p class="chatview-title">Magister</p>
         <p class="chatview-sub">${chatIntent === "libro" ? "Pídenos tu libro" : "Ayuda"}</p>
       </div>
-      ${!anonNeedsIntro ? (chatClosed ? `<button type="button" class="chatview-endbtn" data-action="chat-new">Iniciar un chat nuevo</button>` : `<button type="button" class="chatview-endbtn" data-action="chat-finalize">Finalizar chat</button>`) : ""}
+      ${!anonNeedsIntro ? (chatClosed ? `<button type="button" class="chatview-endbtn chatview-newbtn" data-action="chat-new">Iniciar un chat nuevo</button>` : `<button type="button" class="chatview-endbtn" data-action="chat-finalize">Finalizar chat</button>`) : ""}
     </div>
     <p class="chatview-welcome">${esc(CHAT_EXPLAIN[chatIntent])}</p>
     ${anonNeedsIntro ? `<form id="chat-intro" class="chat-intro form-stack">
@@ -1355,6 +1443,10 @@ document.addEventListener("click", async (e) => {
   else if (action === "chat-new") { chatResetForNew(); render(); chatStart(); }
   else if (action === "goto-home") { viewHistory = []; go({ name: "home" }, { replace: true }); }
   else if (action === "goto-library") go({ name: "library" });
+  else if (action === "goto-settings") { settingsMsg = null; go({ name: "account-settings" }); }
+  else if (action === "subscribe-chat") openChat("ayuda");
+  else if (action === "notice-subscribe") { hideSampleNotice(); sampleNoticeBookId = null; openChat("ayuda"); }
+  else if (action === "notice-continue") { hideSampleNotice(); const _nb = sampleNoticeBookId; sampleNoticeBookId = null; if (_nb != null) openBookDirect(_nb); }
   else if (action === "require-auth") go({ name: "account" });
   else if (action === "subscribe") go({ name: "account" });
   else if (action === "read") openChapter(id, Number(el.dataset.ch || 0));
@@ -1454,6 +1546,36 @@ document.addEventListener("submit", async (e) => {
     } catch (err) {
       authBusy = false; authError = errorText(err); render();
     }
+  }
+  if (form.id === "settings-email-form") {
+    e.preventDefault();
+    const email = document.getElementById("settings-email").value;
+    settingsBusy = true; render();
+    try {
+      const r = await api.changeEmail(token, email);
+      if (r && r.user) user = r.user;
+      settingsBusy = false;
+      settingsMsg = { area: "email", ok: true, text: "Correo actualizado. La próxima vez entrarás con tu correo nuevo." };
+    } catch (err) {
+      settingsBusy = false;
+      settingsMsg = { area: "email", ok: false, text: errorText(err) };
+    }
+    render();
+  }
+  if (form.id === "settings-pass-form") {
+    e.preventDefault();
+    const actual = document.getElementById("settings-pass-actual").value;
+    const nueva = document.getElementById("settings-pass-nueva").value;
+    settingsBusy = true; render();
+    try {
+      await api.changePassword(token, actual, nueva);
+      settingsBusy = false;
+      settingsMsg = { area: "pass", ok: true, text: "Contraseña actualizada." };
+    } catch (err) {
+      settingsBusy = false;
+      settingsMsg = { area: "pass", ok: false, text: errorText(err) };
+    }
+    render();
   }
 });
 
@@ -1629,7 +1751,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r34";
+const EPUB_BUILD = "r35";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -1658,19 +1780,33 @@ const EPUB_PAPER = {
   claro: "rgba(255,253,246,0.88)",
 };
 /* Tonos del volteo (r18): el sombreado vende la redondez del
-   cilindro — sombra en la raíz del doblez, banda de luz en la
-   cresta, atenuación hacia el borde libre y sombra proyectada
-   suave sobre la página de debajo. Todo va SOBRE el anverso
-   sólido (que lleva el fondo opaco del tema): son degradados
-   de luz/sombra, nunca transparencia del anverso. Por tema. */
+   doblez y la sombra proyectada suave cae sobre la página de
+   debajo. Todo va SOBRE el anverso sólido (que lleva el fondo
+   opaco del tema): son degradados de luz/sombra, nunca
+   transparencia del anverso. Por tema.
+   r35 (Sergio, con su captura photo-90 de la r34): la banda de
+   tonos del pliegue llevaba una cresta de luz blanca (0.30 en
+   oscuro, 0.75 en claro) que en su iPhone se veía como un TUBO
+   brillante sobre la hoja — «el cilindro se nota mucho». Su
+   acabado: «debería ser como una parte donde se vea como
+   curva, como abultada, y que va cayendo hacia el fin de la
+   hoja, tipo duna». La banda nueva (`band`, 320 px desde la
+   línea de doblez) tiene perfil de DUNA: sombra en la raíz,
+   subida gradual a una joroba redondeada y SUTIL (una luz
+   tenue que nunca se acerca al antiguo pico) y caída larga y
+   progresiva hasta desvanecerse hacia el fin de la hoja. Sin
+   núcleo luminoso, sin meseta, sin filo. SOLO en el tema
+   oscuro: del claro dijo Sergio «se ve perfecto como está» y
+   su banda conserva el perfil exacto de r34 (ver la nota en
+   su `band`). Medido por píxeles con measure-r35: en oscuro
+   el pico del doblez bajó de ~102 (base de la solapa ~43,
+   plano ~15) a ~58 con joroba ancha y caída larga. */
 const EPUB_CURL_TONES = {
   oscuro: {
-    arc: "linear-gradient(90deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.12) 20%, rgba(255,255,255,0.30) 40%, rgba(255,255,255,0.06) 58%, rgba(0,0,0,0.18) 78%, rgba(0,0,0,0.36) 100%)",
-    arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.12) 20%, rgba(255,255,255,0.30) 40%, rgba(255,255,255,0.06) 58%, rgba(0,0,0,0.18) 78%, rgba(0,0,0,0.36) 100%)",
+    arc: "linear-gradient(90deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.14) 22%, rgba(255,255,255,0.08) 42%, rgba(255,255,255,0.03) 62%, rgba(0,0,0,0.10) 82%, rgba(0,0,0,0.30) 100%)",
+    arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.14) 22%, rgba(255,255,255,0.08) 42%, rgba(255,255,255,0.03) 62%, rgba(0,0,0,0.10) 82%, rgba(0,0,0,0.30) 100%)",
     cast: "rgba(0,0,0,0.42)",
-    root: "rgba(0,0,0,0.40)",
-    crest: "rgba(255,255,255,0.30)",
-    fall: "rgba(0,0,0,0.16)",
+    band: "linear-gradient(90deg, rgba(0,0,0,0.38) 0%, rgba(0,0,0,0.23) 7%, rgba(0,0,0,0.08) 14%, rgba(255,255,255,0.030) 21%, rgba(255,255,255,0.066) 28%, rgba(255,255,255,0.085) 35%, rgba(255,255,255,0.078) 43%, rgba(255,255,255,0.056) 53%, rgba(255,255,255,0.033) 65%, rgba(255,255,255,0.015) 78%, rgba(255,255,255,0.004) 89%, rgba(0,0,0,0) 100%)",
     shade: 0.30, sheen: 0.18,
     wash: "linear-gradient(90deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
     washPrev: "linear-gradient(270deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
@@ -1679,9 +1815,17 @@ const EPUB_CURL_TONES = {
     arc: "linear-gradient(90deg, rgba(74,56,24,0.34) 0%, rgba(74,56,24,0.08) 22%, rgba(255,255,255,0.65) 44%, rgba(74,56,24,0.05) 60%, rgba(74,56,24,0.18) 80%, rgba(74,56,24,0.34) 100%)",
     arcPrev: "linear-gradient(270deg, rgba(74,56,24,0.34) 0%, rgba(74,56,24,0.08) 22%, rgba(255,255,255,0.65) 44%, rgba(74,56,24,0.05) 60%, rgba(74,56,24,0.18) 80%, rgba(74,56,24,0.34) 100%)",
     cast: "rgba(74,56,24,0.32)",
-    root: "rgba(74,56,24,0.30)",
-    crest: "rgba(255,255,255,0.75)",
-    fall: "rgba(74,56,24,0.13)",
+    /* Tema claro INTACTO (acotación de Sergio en r35: «en el
+       tema claro se ve perfecto como está»): esta `band` es el
+       perfil EXACTO de r34 (raíz 0.30 → cresta blanca 0.75 al
+       30 % → caída 0.13 al 65 % → transparente) reescalado al
+       ancho nuevo del elemento (320 px): los topes caen en las
+       mismas posiciones físicas que con los 170 px de r34
+       (30 %→15.9 %, 65 %→34.5 %, 100 %→53.1 %) y más allá va
+       transparente, como cuando la banda ni siquiera llegaba.
+       Su render es idéntico al de r34; la duna es solo del
+       tema oscuro. */
+    band: "linear-gradient(90deg, rgba(74,56,24,0.30) 0%, rgba(255,255,255,0.75) 15.9%, rgba(74,56,24,0.13) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
     shade: 0.22, sheen: 0.10,
     wash: "linear-gradient(90deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.14) 55%, rgba(255,255,255,0) 100%)",
     washPrev: "linear-gradient(270deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.14) 55%, rgba(255,255,255,0) 100%)",
@@ -1831,6 +1975,10 @@ function epubHtml() {
           <div class="epub-menu-row">
             <span class="epub-menu-label">${T("Brillo")}</span>
             <input type="range" id="epub-bright" min="45" max="100" step="1" value="100" aria-label="${T("Brillo")}">
+          </div>
+          <div class="epub-menu-row">
+            <span class="epub-menu-label">${T("Calidez")}</span>
+            <input type="range" id="epub-warm" min="0" max="100" step="1" value="0" aria-label="${T("Calidez")}">
           </div>
         </div>
         <button type="button" class="epub-panel-x" data-action="epub-menu" aria-label="${T("Cerrar el menú")}">×</button>
@@ -3070,7 +3218,7 @@ function epubCurlTryBegin(g, x, y) {
   if (flap) {
     flap.hidden = false;
     const band = flap.querySelector(".cv-flap-band");
-    if (band) band.style.background = "linear-gradient(90deg, " + T.root + " 0%, " + T.crest + " 30%, " + T.fall + " 65%, rgba(0,0,0,0) 100%)";
+    if (band) band.style.background = T.band;
     const fp = flap.querySelector(".cv-flap-paper");
     if (fp) fp.style.background = epubCurlPaper;
   }
@@ -3861,6 +4009,11 @@ function epubTopAttach() {
   if (br && !br.__mgBrightHook) {
     br.__mgBrightHook = true;
     br.addEventListener("input", () => epubBrightSet(Number(br.value)));
+  }
+  const wr = document.getElementById("epub-warm");
+  if (wr && !wr.__mgWarmHook) {
+    wr.__mgWarmHook = true;
+    wr.addEventListener("input", () => epubWarmSet(Number(wr.value)));
   }
 }
 
@@ -4720,9 +4873,10 @@ function epubActViewNotes() {
 /* --------------------------------- menú de la barra (r25) */
 
 /* Desplegable de la barra del lector: letra, tema, notas de
-   ESTE libro y brillo de la lectura. El brillo se aplica como
-   filtro sobre el área de lectura (visor + láminas del volteo,
-   nunca sobre los paneles) y se recuerda entre sesiones. */
+   ESTE libro, brillo y calidez de la lectura. Ambos se aplican
+   como filtro sobre el área de lectura (visor + láminas del
+   volteo, nunca sobre los paneles) y se recuerdan entre
+   sesiones. */
 const EPUB_BRIGHT_KEY = "magister-epub-bright-v1";
 function epubBrightGet() {
   let v = 100;
@@ -4730,18 +4884,41 @@ function epubBrightGet() {
   if (!Number.isFinite(v)) v = 100;
   return Math.max(45, Math.min(100, v));
 }
+/* Calidez (r35, pedido de Sergio): temperatura de color de la
+   superficie de lectura, con el mismo patrón que el brillo.
+   0 = neutro (sin cambio, el valor por defecto); al subir, un
+   tinte ámbar/sepia progresivo (sepia de hasta 0.6 a fondo de
+   escala) que se compone con el brillo en el mismo filtro y se
+   recuerda entre sesiones. */
+const EPUB_WARM_KEY = "magister-epub-warm-v1";
+function epubWarmGet() {
+  let v = 0;
+  try { v = parseInt(localStorage.getItem(EPUB_WARM_KEY) || "0", 10); } catch { /* sin almacén */ }
+  if (!Number.isFinite(v)) v = 0;
+  return Math.max(0, Math.min(100, v));
+}
 function epubApplyBright() {
   const v = epubBrightGet();
-  const f = v >= 100 ? "" : `brightness(${v / 100})`;
+  const w = epubWarmGet();
+  const parts = [];
+  if (v < 100) parts.push(`brightness(${v / 100})`);
+  if (w > 0) parts.push(`sepia(${((w / 100) * 0.6).toFixed(3)})`);
+  const f = parts.join(" ");
   for (const id of ["epub-viewer", "epub-curl", "epub-sheet", "epub-fold"]) {
     const el = document.getElementById(id);
     if (el) el.style.filter = f;
   }
   const sl = document.getElementById("epub-bright");
   if (sl && Number(sl.value) !== v) sl.value = String(v);
+  const sw = document.getElementById("epub-warm");
+  if (sw && Number(sw.value) !== w) sw.value = String(w);
 }
 function epubBrightSet(v) {
   try { localStorage.setItem(EPUB_BRIGHT_KEY, String(v)); } catch { /* sin almacén */ }
+  epubApplyBright();
+}
+function epubWarmSet(v) {
+  try { localStorage.setItem(EPUB_WARM_KEY, String(v)); } catch { /* sin almacén */ }
   epubApplyBright();
 }
 function epubToggleMenu() {
