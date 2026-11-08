@@ -1789,7 +1789,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r40";
+const EPUB_BUILD = "r41";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -1806,7 +1806,15 @@ const EPUB_CDNS = {
   ],
 };
 const EPUB_THEMES = {
-  oscuro: { bg: "#101014", ink: "#eae7de", head: "#f5f5f7", link: "#d3a24a" },
+  /* r41 (PRUEBA, Sergio: «El tono oscuro pásalo a grisáceo a
+     ver cómo se ve» / «Solo prueba»): el fondo del tema oscuro
+     del lector pasa de casi negro (#101014, plano medido ~16)
+     a GRIS oscuro #45454b (plano ~69). La tinta #eae7de queda
+     (contraste ~7,6:1 sobre el gris, cómodo); el enlace sube
+     un punto (#d3a24a → #d9ac55) para mantener su contraste
+     sobre el fondo más claro. Si la prueba no le gusta, se
+     revierte a los valores de r40. */
+  oscuro: { bg: "#45454b", ink: "#eae7de", head: "#f5f5f7", link: "#d9ac55" },
   claro: { bg: "#faf7f0", ink: "#2a251e", head: "#171310", link: "#8a5a12" },
 };
 const EPUB_CHROME_MS = 3000;
@@ -1814,7 +1822,9 @@ const EPUB_CHROME_MS = 3000;
    semitransparente en Claro; en Oscuro, su equivalente oscuro
    también translúcido. La página de debajo se trasluce a través. */
 const EPUB_PAPER = {
-  oscuro: "rgba(43,43,50,0.88)",
+  /* r41: el papel oscuro sube con el nuevo fondo gris
+     manteniendo la misma relación de r40 (+27 sobre el bg). */
+  oscuro: "rgba(96,96,104,0.88)",
   claro: "rgba(255,253,246,0.88)",
 };
 /* Tonos del volteo (r18): el sombreado vende la redondez del
@@ -1869,16 +1879,26 @@ const EPUB_PAPER = {
    cresta igualmente atenuada (en la arquitectura actual de
    doblez unificado el componente vivo es `band`; quedan
    coherentes por si el pool de franjas se reactiva). El
-   claro NO se toca: su bloque queda byte a byte igual. */
+   claro NO se toca: su bloque queda byte a byte igual.
+   r41 (PRUEBA del fondo grisáceo): el cilindro de r40 se
+   conserva en VOLUMEN RELATIVO sobre el nuevo plano (~69):
+   como los degradados componen por alfa sobre el fondo, los
+   blancos del bloque oscuro suben ×1,29 (la cresta de la
+   banda 0.225→0.29 y sus hombros, el wash 0.12→0.155, el
+   arco y el sheen) para que el contraste pico−plano siga en
+   ≈ +70 como en r40 (86 sobre 16); los negros quedan — su
+   sombra sobre el gris gana profundidad sola y la raíz sigue
+   marcada bajo la base de la solapa. La geometría (posiciones
+   de los topes) no cambia: mismo cilindro, mismo sitio. */
 const EPUB_CURL_TONES = {
   oscuro: {
-    arc: "linear-gradient(90deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.12) 20%, rgba(255,255,255,0.22) 40%, rgba(255,255,255,0.06) 58%, rgba(0,0,0,0.18) 78%, rgba(0,0,0,0.36) 100%)",
-    arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.12) 20%, rgba(255,255,255,0.22) 40%, rgba(255,255,255,0.06) 58%, rgba(0,0,0,0.18) 78%, rgba(0,0,0,0.36) 100%)",
+    arc: "linear-gradient(90deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.12) 20%, rgba(255,255,255,0.28) 40%, rgba(255,255,255,0.08) 58%, rgba(0,0,0,0.18) 78%, rgba(0,0,0,0.36) 100%)",
+    arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.12) 20%, rgba(255,255,255,0.28) 40%, rgba(255,255,255,0.08) 58%, rgba(0,0,0,0.18) 78%, rgba(0,0,0,0.36) 100%)",
     cast: "rgba(0,0,0,0.42)",
-    band: "linear-gradient(90deg, rgba(0,0,0,0.40) 0%, rgba(0,0,0,0.24) 4.4%, rgba(255,255,255,0.10) 8.8%, rgba(255,255,255,0.225) 15.9%, rgba(255,255,255,0.12) 23.8%, rgba(0,0,0,0.05) 30%, rgba(0,0,0,0.16) 36.9%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
-    shade: 0.30, sheen: 0.18,
-    wash: "linear-gradient(90deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
-    washPrev: "linear-gradient(270deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
+    band: "linear-gradient(90deg, rgba(0,0,0,0.40) 0%, rgba(0,0,0,0.24) 4.4%, rgba(255,255,255,0.13) 8.8%, rgba(255,255,255,0.29) 15.9%, rgba(255,255,255,0.155) 23.8%, rgba(0,0,0,0.05) 30%, rgba(0,0,0,0.16) 36.9%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
+    shade: 0.30, sheen: 0.23,
+    wash: "linear-gradient(90deg, rgba(255,255,255,0.155) 0%, rgba(255,255,255,0.04) 55%, rgba(255,255,255,0) 100%)",
+    washPrev: "linear-gradient(270deg, rgba(255,255,255,0.155) 0%, rgba(255,255,255,0.04) 55%, rgba(255,255,255,0) 100%)",
   },
   claro: {
     arc: "linear-gradient(90deg, rgba(74,56,24,0.34) 0%, rgba(74,56,24,0.08) 22%, rgba(255,255,255,0.65) 44%, rgba(74,56,24,0.05) 60%, rgba(74,56,24,0.18) 80%, rgba(74,56,24,0.34) 100%)",
