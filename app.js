@@ -1867,7 +1867,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r63";
+const EPUB_BUILD = "r64";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -4639,6 +4639,62 @@ function epubFontStep(delta) {
   epubCurlPoolSchedule();
 }
 
+/* r64 (Sergio: «Al hacer el cambio de tema a veces se
+   conserva el color del tema anterior un momento»): las
+   capas del volteo (plana, solapa, franjas y reversos del
+   pool) solo se repintaban cuando aterrizaba la
+   reconstrucción del pool — programada a +90 ms y, si un
+   pase estaba en curso, diferida hasta que el gesto
+   acabara —, así que un pase iniciado justo tras el
+   cambio enseñaba la hoja ENTERA con los colores del tema
+   anterior durante todo el pase (medido: la plana clonada
+   seguía en el fondo viejo con el tema ya cambiado, y en
+   reposo los clones tardaban 140–322 ms en seguir al
+   tema). Aquí el tema se aplica a TODAS esas superficies
+   en el mismo paso síncrono del cambio: fondos de la
+   plana y de las caras de las franjas, papel de la solapa
+   y de los reversos, las variables de papel/tonos que el
+   gesto lee al montar, y el estilo de tema DENTRO de cada
+   documento clonado (la misma hoja #magister-epub-theme
+   que viste al documento vivo, accesible por ser clones
+   srcdoc del mismo origen). La reconstrucción del pool
+   sigue programada detrás, como siempre: reserializa los
+   clones ya vestidos y no cambia nada visible. */
+function epubCurlApplyTheme() {
+  const t = EPUB_THEMES[epubThemeName] || EPUB_THEMES.oscuro;
+  const paper = EPUB_PAPER[epubThemeName] || EPUB_PAPER.oscuro;
+  epubCurlPaper = paper;
+  epubCurlTones = EPUB_CURL_TONES[epubThemeName] || EPUB_CURL_TONES.oscuro;
+  const css = epubThemeCssText(t);
+  const paintDoc = (iframe) => {
+    try {
+      const d = iframe && iframe.contentDocument;
+      if (!d || !d.head) return;
+      let st = d.getElementById("magister-epub-theme");
+      if (!st) {
+        st = d.createElement("style");
+        st.id = "magister-epub-theme";
+        d.head.appendChild(st);
+      }
+      if (st.textContent !== css) st.textContent = css;
+    } catch { /* clon a mitad de carga: lo vestirá la reconstrucción del pool */ }
+  };
+  const flat = document.getElementById("epub-curl-flat");
+  if (flat) flat.style.background = t.bg;
+  paintDoc(document.querySelector("#epub-curl-flat iframe"));
+  paintDoc(document.querySelector("#epub-curl-flap iframe"));
+  const fp = document.querySelector("#epub-curl-flap .cv-flap-paper");
+  if (fp) fp.style.background = paper;
+  if (epubCurlStripEls) {
+    for (const s of epubCurlStripEls) {
+      s.frontEl.style.background = t.bg;
+      s.backPaper.style.background = paper;
+      paintDoc(s.iframe);
+    }
+  }
+  document.querySelectorAll("#epub-curl-revs iframe").forEach(paintDoc);
+}
+
 function epubToggleTheme() {
   /* r48: el botón «Tema» recorre los TRES temas en el orden
      Claro · Oscuro · Menta: Oscuro → Claro → Menta → Oscuro
@@ -4652,6 +4708,9 @@ function epubToggleTheme() {
   if (epubRendition) {
     try { epubRendition.getContents().forEach((c) => epubStyleContents(c)); } catch { /* la próxima sección ya nacerá con el tema */ }
   }
+  /* r64: las capas del volteo se visten del tema nuevo en
+     este mismo paso, sin esperar a la reconstrucción. */
+  epubCurlApplyTheme();
   epubPoke();
   epubCurlPoolSchedule();
 }
