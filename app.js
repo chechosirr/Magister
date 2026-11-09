@@ -1867,7 +1867,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r55";
+const EPUB_BUILD = "r56";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -2159,7 +2159,7 @@ const EPUB_CURL_TONES = {
        transparente, como cuando la banda ni siquiera llegaba.
        Su render es idéntico al de r34; la duna es solo del
        tema oscuro. */
-    band: "linear-gradient(90deg, rgba(74,56,24,0.37) 0%, rgba(114,100,75,0.417) 3.5%, rgba(183,175,163,0.532) 7.2%, rgba(230,228,224,0.658) 10.8%, rgba(250,250,249,0.73) 13.7%, rgba(255,255,255,0.75) 15.9%, rgba(74,56,24,0.13) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
+    band: "linear-gradient(90deg, rgba(74,56,24,0.26) 0%, rgba(134,122,100,0.34) 3.5%, rgba(204,199,190,0.532) 7.2%, rgba(240,238,235,0.744) 10.8%, rgba(252,252,251,0.865) 13.7%, rgba(255,255,255,0.9) 15.9%, rgba(74,56,24,0.13) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
     /* r51 (llega de la prueba r50p del preview, aprobada
        por Sergio y publicada — Sergio con
        su captura photo-94 de un pase en claro): «La parte
@@ -2210,8 +2210,25 @@ const EPUB_CURL_TONES = {
        (la r50p2 bajaba −28; el intento de −60 era
        mancha). Oscuro ×1,55 (0.20 → 0.31) y Menta
        ×1,54 (0.13 → 0.20), este último por debajo del
-       claro como siempre. */
-    castGrad: "linear-gradient(90deg, rgba(74,56,24,0.25) 0%, rgba(74,56,24,0.137) 30%, rgba(74,56,24,0.050) 62%, rgba(74,56,24,0) 100%)",
+       claro como siempre.
+       r56 (Sergio: «les des las mismas tonalidades
+       y sombras e intensidad que tiene el tema oscuro
+       actual a los demás temas»): claro y Menta reciben
+       la intensidad del oscuro r54 EN PROPORCIÓN a su
+       propio papel (el oscuro no se toca). Calibrado
+       con el arnés (pase ancho): la raíz en la línea de
+       doblez baja a ρ≈0,47 del papel y la sombra
+       proyectada cae a +5 px a ρ≈0,27 — las proporciones
+       del oscuro (0,48 y 0,28) —. En claro la raíz de la
+       banda queda en 0.26 cálida y el cast en un cálido
+       más profundo (48,35,12) con pico 0.93: con el
+       cálido de siempre (74,56,24) ni a pico 1.0 se
+       llega a la proporción de la sombra. La cresta
+       blanca sube a 0.9 y queda en el techo (medida
+       253,8; ρ 1,03): no puede acercarse al 1,49 del
+       oscuro porque su papel ya vive casi en el blanco;
+       el relieve lo ponen la base y la sombra. */
+    castGrad: "linear-gradient(90deg, rgba(48,35,12,0.93) 0%, rgba(48,35,12,0.501) 30%, rgba(48,35,12,0.176) 62%, rgba(48,35,12,0) 100%)",
     shade: 0.22, sheen: 0.10,
     wash: "linear-gradient(90deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.14) 55%, rgba(255,255,255,0) 100%)",
     washPrev: "linear-gradient(270deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.14) 55%, rgba(255,255,255,0) 100%)",
@@ -2236,7 +2253,7 @@ const EPUB_CURL_TONES = {
     arc: "linear-gradient(90deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.13) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
     arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.13) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
     cast: "rgba(0,0,0,0.25)",
-    band: "linear-gradient(90deg, rgba(0,0,0,0.29) 0%, rgba(18,18,18,0.274) 3.5%, rgba(74,74,74,0.235) 7.2%, rgba(162,162,162,0.191) 10.8%, rgba(231,231,231,0.167) 13.7%, rgba(255,255,255,0.16) 15.9%, rgba(0,0,0,0.10) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
+    band: "linear-gradient(90deg, rgba(0,0,0,0.21) 0%, rgba(95,95,95,0.294) 3.5%, rgba(193,193,193,0.495) 7.2%, rgba(237,237,237,0.717) 10.8%, rgba(252,252,252,0.844) 13.7%, rgba(255,255,255,0.88) 15.9%, rgba(0,0,0,0.10) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
     /* r51 (prueba r50p): raíz 0.23 → 0.29 y
        castGrad difuso, como en claro (ver la nota allí);
        en la escala de Menta el pico es 0.08.
@@ -2246,8 +2263,17 @@ const EPUB_CURL_TONES = {
        suave sobre su raíz→cresta.
        r50p4: pico de la sombra 0.13 → 0.20 (×1,54,
        paradas en la misma proporción), por debajo del
-       claro (0.25) como hasta ahora. */
-    castGrad: "linear-gradient(90deg, rgba(0,0,0,0.20) 0%, rgba(0,0,0,0.112) 30%, rgba(0,0,0,0.037) 62%, rgba(0,0,0,0) 100%)",
+       claro (0.25) como hasta ahora.
+       r56: la misma subida de intensidad que en claro,
+       en proporción a su papel (ver la nota allí): raíz
+       de la banda a 0.21 con la campana recalculada y
+       cresta blanca a 0.88 (medida 250; ρ 1,14 sobre su
+       papel — el techo blanco manda, como en claro), y
+       el castGrad adopta la forma exacta del oscuro
+       (0.78/0.42/0.148): a +5 px cae a ρ 0,28 de su
+       papel, como el oscuro. Medido: raíz en la línea
+       ρ 0,477. */
+    castGrad: "linear-gradient(90deg, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.42) 30%, rgba(0,0,0,0.148) 62%, rgba(0,0,0,0) 100%)",
     shade: 0.22, sheen: 0.10,
     wash: "linear-gradient(90deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
     washPrev: "linear-gradient(270deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
