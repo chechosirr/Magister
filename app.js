@@ -1857,7 +1857,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r53";
+const EPUB_BUILD = "r54";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -2084,7 +2084,7 @@ const EPUB_CURL_TONES = {
     arc: "linear-gradient(90deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.01) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
     arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.01) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
     cast: "rgba(0,0,0,0.25)",
-    band: "linear-gradient(90deg, rgba(0,0,0,0.29) 0%, rgba(1,1,1,0.255) 3.5%, rgba(6,6,6,0.171) 7.2%, rgba(25,25,25,0.078) 10.8%, rgba(97,97,97,0.025) 13.7%, rgba(255,255,255,0.01) 15.9%, rgba(0,0,0,0.10) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
+    band: "linear-gradient(90deg, rgba(0,0,0,0.40) 0%, rgba(6,6,6,0.359) 3.5%, rgba(29,29,29,0.260) 7.2%, rgba(90,90,90,0.150) 10.8%, rgba(192,192,192,0.088) 13.7%, rgba(255,255,255,0.07) 15.9%, rgba(0,0,0,0.10) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
     /* r51 (llega de la prueba r50p del preview, aprobada
        por Sergio y publicada): raíz del
        doblez un poquito más oscura (0.23 → 0.29) y sombra
@@ -2104,8 +2104,28 @@ const EPUB_CURL_TONES = {
        una curva suave (smoothstep sobre la interpolación
        premultiplicada raíz→cresta): la oscuridad se
        sostiene junto a la base y luego rueda hacia la
-       cresta. Cresta, cola y borde libre intactos. */
-    castGrad: "linear-gradient(90deg, rgba(0,0,0,0.31) 0%, rgba(0,0,0,0.167) 30%, rgba(0,0,0,0.059) 62%, rgba(0,0,0,0) 100%)",
+       cresta. Cresta, cola y borde libre intactos.
+       r54 (Sergio, SOLO tema oscuro: «la sombra se note
+       el triple que la actual y que se note un poco más
+       el cilindro y lo oscuro de la base»): tres toques
+       SOLO en este bloque — claro y Menta byte a byte —:
+       (1) el cast sube a pico 0.78 (×2,52 sobre 0.31;
+       paradas 0.420/0.148 en la misma proporción, mismo
+       degradado difuso de ~120 px): la página revelada
+       junto al pliegue pasa de bajar −20 a bajar ~−51
+       de luminancia a +5 px, sin aplastar a negro (el
+       papel es ~69 y queda ~19 junto a la línea);
+       (2) la cresta blanca sube de 0.01 a 0.07: el
+       cilindro se marca un paso más (cresta medida
+       ~94 → ~104) sin mover su sitio (15,9 %) ni su
+       forma; (3) la raíz de la base baja de 0.29 a
+       0.40 y las paradas intermedias se recalculan con
+       la MISMA curva suave (smoothstep premultiplicada
+       raíz→cresta, mismos factores 0.125/0.425/0.757/
+       0.946): la campana de la base se conserva, solo
+       con el piso más oscuro. Cola (34,5 %), fuera
+       (53,1 %) y borde libre intactos. */
+    castGrad: "linear-gradient(90deg, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.420) 30%, rgba(0,0,0,0.148) 62%, rgba(0,0,0,0) 100%)",
     shade: 0.22, sheen: 0.10,
     /* r46: wash recalibrado 0.01 → 0.007 (conservaba su
        ρ≈1,027 sobre el anverso carbón). r50: con el fondo
