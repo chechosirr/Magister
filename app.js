@@ -555,6 +555,10 @@ function accountHtml() {
             <label for="reg-password">Contraseña</label>
             <input id="reg-password" type="password" required minlength="6" autocomplete="new-password" placeholder="Mínimo 6 caracteres">
           </div>
+          <div class="field">
+            <label for="reg-password2">Repite la contraseña</label>
+            <input id="reg-password2" type="password" required minlength="6" autocomplete="new-password" placeholder="Repite tu contraseña">
+          </div>
           ${regError ? `<p role="alert" class="form-error">${esc(regError)}</p>` : ""}
           <button type="submit" class="btn-primary block" ${authBusy ? "disabled" : ""}>${authBusy ? "Un momento…" : "Crear cuenta"}</button>
           <button type="button" class="forgot-link" data-action="goto-login">¿Ya tienes cuenta? Iniciar sesión</button>
@@ -1640,6 +1644,12 @@ document.addEventListener("submit", async (e) => {
     const name = document.getElementById("reg-name").value;
     const email = document.getElementById("reg-email").value;
     const pass = document.getElementById("reg-password").value;
+    /* r55 (orden de Sergio): la contraseña se pide dos veces al
+       crear la cuenta; si no coinciden, no se envía el registro
+       y se avisa en la pantalla. El servidor recibe la contraseña
+       una sola vez, como siempre. */
+    const pass2 = document.getElementById("reg-password2").value;
+    if (pass !== pass2) { regError = "Las contraseñas no coinciden."; render(); return; }
     authBusy = true; render();
     try {
       const r = await api.register(name, email, pass);
@@ -1857,7 +1867,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r54";
+const EPUB_BUILD = "r55";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
