@@ -1867,7 +1867,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r59";
+const EPUB_BUILD = "r60";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -2159,7 +2159,7 @@ const EPUB_CURL_TONES = {
        transparente, como cuando la banda ni siquiera llegaba.
        Su render es idéntico al de r34; la duna es solo del
        tema oscuro. */
-    band: "linear-gradient(90deg, rgba(74,56,24,0.26) 0%, rgba(134,122,100,0.34) 3.5%, rgba(204,199,190,0.532) 7.2%, rgba(240,238,235,0.744) 10.8%, rgba(252,252,251,0.865) 13.7%, rgba(255,255,255,0.9) 15.9%, rgba(74,56,24,0.13) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
+    band: "linear-gradient(90deg, rgba(74,56,24,0.26) 0%, rgba(126,114,91,0.321) 3.5%, rgba(198,192,182,0.470) 7.2%, rgba(237,235,232,0.631) 10.8%, rgba(252,251,251,0.724) 13.7%, rgba(255,255,255,0.75) 15.9%, rgba(74,56,24,0.13) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
     /* r51 (llega de la prueba r50p del preview, aprobada
        por Sergio y publicada — Sergio con
        su captura photo-94 de un pase en claro): «La parte
@@ -2227,7 +2227,17 @@ const EPUB_CURL_TONES = {
        blanca sube a 0.9 y queda en el techo (medida
        253,8; ρ 1,03): no puede acercarse al 1,49 del
        oscuro porque su papel ya vive casi en el blanco;
-       el relieve lo ponen la base y la sombra. */
+       el relieve lo ponen la base y la sombra.
+       r60 (Sergio: «En el tema Menta y en el tema claro
+       vuelve el cilindro a su brillantez original. En el
+       tema oscuro manténlo como está»): SOLO la cresta —
+       la blanca vuelve de 0.9 a su valor ORIGINAL 0.75
+       (el de antes de la r56) y las paradas intermedias
+       se recalculan con la misma curva suave (smoothstep
+       sobre la interpolación premultiplicada) entre la
+       raíz actual de la r56 (0.26 cálida, que se queda) y
+       la cresta restaurada. La raíz y el castGrad de la
+       r56 no se tocan; el bloque oscuro, byte a byte. */
     castGrad: "linear-gradient(90deg, rgba(48,35,12,0.93) 0%, rgba(48,35,12,0.501) 30%, rgba(48,35,12,0.176) 62%, rgba(48,35,12,0) 100%)",
     shade: 0.22, sheen: 0.10,
     wash: "linear-gradient(90deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.14) 55%, rgba(255,255,255,0) 100%)",
@@ -2253,7 +2263,7 @@ const EPUB_CURL_TONES = {
     arc: "linear-gradient(90deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.13) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
     arcPrev: "linear-gradient(270deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.06) 22%, rgba(255,255,255,0.13) 44%, rgba(0,0,0,0.04) 60%, rgba(0,0,0,0.14) 80%, rgba(0,0,0,0.26) 100%)",
     cast: "rgba(0,0,0,0.25)",
-    band: "linear-gradient(90deg, rgba(0,0,0,0.21) 0%, rgba(95,95,95,0.294) 3.5%, rgba(193,193,193,0.495) 7.2%, rgba(237,237,237,0.717) 10.8%, rgba(252,252,252,0.844) 13.7%, rgba(255,255,255,0.88) 15.9%, rgba(0,0,0,0.10) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
+    band: "linear-gradient(90deg, rgba(0,0,0,0.21) 0%, rgba(25,25,25,0.204) 3.5%, rgba(93,93,93,0.189) 7.2%, rgba(180,180,180,0.172) 10.8%, rgba(238,238,238,0.163) 13.7%, rgba(255,255,255,0.16) 15.9%, rgba(0,0,0,0.10) 34.5%, rgba(0,0,0,0) 53.1%, rgba(0,0,0,0) 100%)",
     /* r51 (prueba r50p): raíz 0.23 → 0.29 y
        castGrad difuso, como en claro (ver la nota allí);
        en la escala de Menta el pico es 0.08.
@@ -2272,7 +2282,13 @@ const EPUB_CURL_TONES = {
        el castGrad adopta la forma exacta del oscuro
        (0.78/0.42/0.148): a +5 px cae a ρ 0,28 de su
        papel, como el oscuro. Medido: raíz en la línea
-       ρ 0,477. */
+       ρ 0,477.
+       r60 (Sergio, como en claro): SOLO la cresta — la
+       blanca vuelve de 0.88 a su ORIGINAL 0.16 (antes de
+       la r56) y las intermedias se recalculan con la
+       misma curva suave entre la raíz actual (0.21, que
+       se queda) y la cresta restaurada. Raíz y castGrad
+       intactos; el oscuro, byte a byte. */
     castGrad: "linear-gradient(90deg, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.42) 30%, rgba(0,0,0,0.148) 62%, rgba(0,0,0,0) 100%)",
     shade: 0.22, sheen: 0.10,
     wash: "linear-gradient(90deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
