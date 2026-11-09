@@ -1867,7 +1867,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r64";
+const EPUB_BUILD = "r65";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -5022,37 +5022,60 @@ async function epubSearchRun() {
   const items = epubBook.spine.spineItems || [];
   const tocFlat = epubTocFlat();
   let total = 0;
+  let fallidas = 0;
+  let tope = false;
   for (let i = 0; i < items.length; i++) {
     if (seq !== epubSearchSeq) return;
     status.textContent = T("Buscando…") + " " + (i + 1) + "/" + items.length + " · " + total + " " + (total === 1 ? T("resultado") : T("resultados"));
-    total += await epubSearchSection(items[i], q, tocFlat, box, () => total);
+    const r = await epubSearchSection(items[i], q, tocFlat, box, () => total);
+    total += r.found;
+    if (r.failed) fallidas++;
+    if (r.capped) tope = true;
     await new Promise((r) => setTimeout(r, 0));
   }
   if (seq !== epubSearchSeq) return;
   if (cancelBtn) cancelBtn.hidden = true;
-  if (!total) {
+  /* Estado final honesto: «Sin resultados» solo si se revisó el
+     libro entero; si alguna parte no se pudo leer, se dice; y
+     si se llegó al tope, se avisa de que hay más. */
+  const avisoFallo = fallidas ? T("No se pudieron revisar") + " " + fallidas + (fallidas === 1 ? " " + T("parte del libro.") : " " + T("partes del libro.")) : "";
+  if (!total && fallidas) {
+    status.textContent = T("La búsqueda no se pudo completar.");
+    box.innerHTML = '<p class="epub-search-none">' + esc(T("No se pudo revisar todo el libro:") + " " + avisoFallo) + "</p>";
+  } else if (!total) {
     status.textContent = T("Sin resultados");
     box.innerHTML = '<p class="epub-search-none">Sin resultados para esta búsqueda.</p>';
   } else {
-    status.textContent = total + (total === 1 ? " resultado" : " resultados");
+    status.textContent = (tope ? T("Primeros") + " " + total + " " + T("resultados (hay más en el libro)") : total + (total === 1 ? " resultado" : " resultados")) + (avisoFallo ? " · " + avisoFallo : "");
   }
 }
 
-/* Busca en UNA sección del spine usando la rendition oculta:
-   carga la sección, construye su texto normalizado con mapa a
-   posiciones originales, y por cada coincidencia crea el rango
-   original, su CFI y un extracto con la palabra marcada. La
-   sección queda liberada al cargar la siguiente. */
+/* Busca en UNA sección del spine cargando su documento XHTML
+   directamente desde el archivo del libro (epub.js
+   Section.load), SIN pasar por ninguna rendition: no pagina,
+   no compite con el volteo ni con la rendition oculta, cubre
+   todas las secciones estén o no cargadas en pantalla y no
+   tiene el timeout de renderizado de 4,5 s que antes saltaba
+   secciones en silencio. Construye el texto normalizado con
+   mapa a posiciones originales y por cada coincidencia crea
+   el rango original, su CFI (Section.cfiFromRange) y un
+   extracto con la palabra marcada. La sección que cargó la
+   búsqueda se descarga al terminar; la que ya estuviera
+   cargada por el lector no se toca.
+   Devuelve { found, failed, capped }. */
 async function epubSearchSection(item, q, tocFlat, box, countSoFar) {
   const baseCount = countSoFar();
-  if (baseCount >= 300) return 0;
-  let ok = false;
-  try { ok = await epubR2Show(item.href); } catch { ok = false; }
-  if (!ok || !epubR2) return 0;
-  let contents = null;
-  try { contents = (epubR2.getContents() || [])[0]; } catch { contents = null; }
-  const doc = contents && contents.document;
-  if (!doc || !doc.body) return 0;
+  if (baseCount >= 300) return { found: 0, failed: false, capped: true };
+  const wasLoaded = !!(item && item.contents);
+  let doc = null;
+  try {
+    await item.load(epubBook.load.bind(epubBook));
+    doc = item.document || null;
+  } catch { doc = null; }
+  if (!doc || !doc.body) {
+    if (!wasLoaded) { try { item.unload(); } catch { /* nada que liberar */ } }
+    return { found: 0, failed: true, capped: false };
+  }
   const walker = doc.createTreeWalker(doc.body, 4);
   let norm = "";
   let orig = "";
@@ -5065,7 +5088,10 @@ async function epubSearchSection(item, q, tocFlat, box, countSoFar) {
     norm += epubNormText(raw);
     orig += raw;
   }
-  if (!norm) return 0;
+  if (!norm) {
+    if (!wasLoaded) { try { item.unload(); } catch { /* nada que liberar */ } }
+    return { found: 0, failed: false, capped: false };
+  }
   const base = String(item.href || "").split("#")[0];
   const tocHit = tocFlat.find((t) => t.href && (t.href === base || base.endsWith("/" + t.href) || t.href.endsWith("/" + base)));
   const label = tocHit && tocHit.label ? tocHit.label.trim() : T("Sección");
@@ -5086,23 +5112,30 @@ async function epubSearchSection(item, q, tocFlat, box, countSoFar) {
       if (epubNormText(seg.raw[origOff]).length) seen++;
       origOff++;
     }
-    let endOff = origOff;
+    /* La coincidencia puede cruzar varios nodos (palabra o
+       frase partida entre etiquetas): el rango va del nodo
+       inicial al nodo donde termina, para que el CFI y el
+       extracto cubran la coincidencia entera. */
+    const endIx = ix + q.length - 1;
+    const segF = segs.find((s) => endIx >= s.start && endIx < s.start + s.nlen) || seg;
+    const localF = endIx - segF.start;
+    let endOff = 0;
     let seen2 = 0;
-    while (endOff < seg.raw.length && seen2 < q.length) {
-      if (epubNormText(seg.raw[endOff]).length) seen2++;
+    while (endOff < segF.raw.length && seen2 <= localF) {
+      if (epubNormText(segF.raw[endOff]).length) seen2++;
       endOff++;
     }
-    if (endOff <= origOff) endOff = Math.min(seg.raw.length, origOff + q.length);
+    if (segF === seg && endOff <= origOff) endOff = Math.min(seg.raw.length, origOff + q.length);
     let cfi = "";
     try {
       const range = doc.createRange();
       range.setStart(seg.node, Math.min(origOff, seg.raw.length));
-      range.setEnd(seg.node, Math.min(endOff, seg.raw.length));
-      cfi = contents.cfiFromRange(range);
+      range.setEnd(segF.node, Math.min(endOff, segF.raw.length));
+      cfi = item.cfiFromRange(range);
     } catch { cfi = ""; }
     if (!cfi) continue;
     const gIx = seg.ostart + origOff;
-    const gEnd = seg.ostart + endOff;
+    const gEnd = segF.ostart + endOff;
     const before = orig.slice(Math.max(0, gIx - 42), gIx).replace(/\s+/g, " ");
     const match = orig.slice(gIx, gEnd);
     const after = orig.slice(gEnd, gEnd + 42).replace(/\s+/g, " ");
@@ -5115,7 +5148,8 @@ async function epubSearchSection(item, q, tocFlat, box, countSoFar) {
     box.appendChild(btn);
     found++;
   }
-  return found;
+  if (!wasLoaded) { try { item.unload(); } catch { /* nada que liberar */ } }
+  return { found, failed: false, capped: baseCount + found >= 300 };
 }
 
 function epubSearchGoResult(cfi) {
