@@ -1867,7 +1867,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r60";
+const EPUB_BUILD = "r61";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -3792,7 +3792,7 @@ function epubCurlTryBegin(g, x, y) {
      epubCurlPoolRender): en oscuro, las dos caras oscuras. */
   if (flatWrap) { flatWrap.style.background = themeBg; flatWrap.style.clipPath = ""; }
   if (epubCurlStripEls) for (const s of epubCurlStripEls) s.frontEl.style.background = themeBg;
-  if (wash) wash.style.background = g.dir > 0 ? T.wash : T.washPrev;
+  if (wash) { wash.style.background = g.dir > 0 ? T.wash : T.washPrev; wash.style.opacity = ""; }
   /* La geometría activa es la solapa de doblez (diagonal en
      esquina, vertical en borde): las franjas del cilindro quedan
      fuera (holder oculto) durante TODO el gesto en ambos pases —
@@ -3840,6 +3840,13 @@ function epubCurlTryBegin(g, x, y) {
        del dedo para detectar la vuelta a horizontal. */
     tiltFree: false, tiltDy: 0, tiltYBase: y,
     tiltHist: [{ t: performance.now(), x: x, y: y }],
+    /* r61: el brillo (wash) se ata al avance del pase: washPeak
+       es la mayor distancia punta–ancla alcanzada en el gesto.
+       Al avanzar, el avance ES el pico y el wash va pleno, como
+       siempre; al retroceder, la opacidad del wash cae en
+       proporción avance/pico, en espejo de la ida, hasta cero
+       al llegar al reposo. */
+    washPeak: 0,
   };
   epubCurlBusy = true;
   epubCurlFrame();
@@ -4055,8 +4062,29 @@ function epubCurlFoldFrame(K, F) {
   const flat = document.getElementById("epub-curl-flat");
   const flap = document.getElementById("epub-curl-flap");
   const cast = document.getElementById("epub-curl-cast");
+  const wash = document.getElementById("epub-curl-wash");
   const dx = F.x - K.x, dy = F.y - K.y;
   const dist = Math.hypot(dx, dy);
+  /* r61: el brillo sigue al avance del pase. Sergio: «al ir
+     retrocediendo… el brillo permanece y cuando la hoja se
+     asienta el brillo se quita de golpe. Quiero que al ir la
+     hoja retrocediendo para asentarse el brillo vaya
+     desapareciendo paulatinamente también». El wash era un
+     degradado fijo a plena opacidad durante todo el gesto y
+     solo moría al ocultarse la capa en el asentamiento
+     (medido: opacidad 1,0 en el 100 % de la vuelta y corte a
+     cero al asentar). Ahora su opacidad es avance/pico del
+     propio gesto: en la ida el avance es el pico (opacidad 1,
+     aparición intacta); en la vuelta — arrastre de retorno o
+     animación de cancelación — decrece de forma continua en
+     espejo hasta exactamente 0 al llegar la hoja al reposo,
+     así el asentamiento ya no corta nada. Al cometer, el
+     avance no deja de crecer: opacidad 1 todo el camino. */
+  if (wash) {
+    if (dist > (C.washPeak || 0)) C.washPeak = dist;
+    const wf = C.washPeak > 0 ? Math.min(1, dist / C.washPeak) : 1;
+    wash.style.opacity = wf >= 0.999 ? "" : wf.toFixed(3);
+  }
   if (dist < 6) {
     if (flat) flat.style.clipPath = "";
     if (flap) flap.style.clipPath = "polygon(0px 0px, 0px 0px, 0px 0px)";
@@ -4296,6 +4324,8 @@ function epubCurlSettle(complete) {
     if (holder) holder.style.visibility = "";
     const flatWrap = document.getElementById("epub-curl-flat");
     if (flatWrap) { flatWrap.style.clipPath = ""; flatWrap.style.visibility = ""; }
+    const washEl = document.getElementById("epub-curl-wash");
+    if (washEl) washEl.style.opacity = "";
     epubCurlBusy = false;
     /* r58: la reconstrucción se programa al cometer (lo de
        siempre) y TAMBIÉN tras cancelar si el pool quedó
