@@ -827,6 +827,12 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
 
 .epub-topsheet-grip { flex: 0 0 auto; padding: 9px 0 3px; display: flex; justify-content: center; cursor: ns-resize; touch-action: none; }
 
+/* r66: el asa inferior del ÍNDICE crece a una franja de agarre
+   de 33 px (16 + pastilla 5 + 12) para que el dedo la capte
+   sin precisión de cirujano; la pastilla visible no cambia y
+   el resto de hojas conserva su asa de siempre. */
+#epub-toc .epub-topsheet-grip { padding: 16px 0 12px; }
+
 .epub-topsheet-grip span { width: 56px; height: 5px; border-radius: 999px; background: rgba(255,255,255,0.35); display: block; }
 
 /* Cerrar de los paneles desde arriba (r25, pedido de Sergio con

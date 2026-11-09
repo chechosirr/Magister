@@ -1867,7 +1867,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r65";
+const EPUB_BUILD = "r66";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -4844,7 +4844,7 @@ function epubTopAttach() {
      MISMA mecánica cuelga de cualquier zona de arrastre del
      panel — el asa inferior de siempre y, desde r53, la
      cabecera completa — sin duplicar código. */
-  const attachTopDrag = (zone, panelId) => {
+  const attachTopDrag = (zone, panelId, yieldScroll) => {
     if (!zone || zone.__mgTopDragHook) return;
     zone.__mgTopDragHook = true;
     let drag = null;
@@ -4853,12 +4853,27 @@ function epubTopAttach() {
       const p = document.getElementById(panelId);
       const st = epubStageEl();
       if (!p || !st) return;
-      drag = { y0: yOf(e), h0: p.clientHeight, H: st.clientHeight };
+      /* r66: con yieldScroll (la lista del Índice), el gesto
+         nace «auto»: en los primeros píxeles se decide si se lo
+         queda el scroll de la lista o pasa a arrastrar la hoja
+         (ver move); sin yieldScroll manda la hoja desde el
+         primer píxel, como siempre. */
+      drag = { y0: yOf(e), h0: p.clientHeight, H: st.clientHeight, mode: yieldScroll ? "auto" : "sheet" };
     };
     const move = (e) => {
       if (!drag) return;
       const p = document.getElementById(panelId);
       if (!p) return;
+      if (drag.mode === "auto") {
+        const dy = yOf(e) - drag.y0;
+        if (Math.abs(dy) < 4) return;
+        const sc = yieldScroll;
+        const fits = sc.scrollHeight <= sc.clientHeight + 1;
+        const atTop = sc.scrollTop <= 0;
+        const atBottom = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 1;
+        if (!fits && !((atTop && dy > 0) || (atBottom && dy < 0))) { drag = null; return; }
+        drag.mode = "sheet";
+      }
       p.style.height = Math.max(60, Math.min(drag.H, drag.h0 + (yOf(e) - drag.y0))) + "px";
       if (e.cancelable) e.preventDefault();
     };
@@ -4901,6 +4916,32 @@ function epubTopAttach() {
   document.querySelectorAll("[data-topgrip]").forEach((grip) => {
     attachTopDrag(grip, grip.getAttribute("data-topgrip"));
   });
+  /* r66 (pedido de Sergio): «el menú desplegable del índice,
+     mejórale la sensibilidad a la hora de captar el dedo cuando
+     uno quiere bajar o subirlo tocando la última parte del
+     menú, porque a veces le tocas y arrastras y no arrastra».
+     Medido: el asa inferior medía 17 px en total (la pastilla
+     visible, 5 px); 3 px por encima ya caías en el último ítem
+     de la lista, y desde la lista el blindaje r33 anulaba el
+     gesto entero cuando el scroll no podía consumirlo (lista
+     corta que no desplaza, o tirar más allá de su borde):
+     ni scroll ni hoja se movían (Δ = 0 en la medición).
+     Arreglo en DOS piezas, acotado al ÍNDICE:
+     1) Su asa inferior crece a una franja de agarre de 33 px
+        (solo CSS, pastilla intacta: #epub-toc .epub-topsheet-grip).
+     2) La lista cede el gesto a la hoja cuando NO puede
+        seguir en esa dirección: el arrastre que nace en la
+        lista decide en los primeros 4 px — si la lista puede
+        desplazarse, se lo queda entero (scroll intacto, sin
+        traspasos a mitad de gesto); si no puede (contenido
+        que cabe, principio tirando hacia abajo o final
+        tirando hacia arriba), la hoja sigue al dedo desde el
+        origen del gesto, sin zona muerta. El toque sin
+        arrastre sigue navegando al capítulo, y al soltar
+        manda lo de la r63: la hoja se queda donde el dedo la
+        dejó (con su cierre bajo el 38 %). */
+  const tocList = document.getElementById("epub-toc-list");
+  if (tocList) attachTopDrag(tocList, "epub-toc", tocList);
   /* r53 (pedido de Sergio): «que el panel se pueda extender
      y desextender arrastrando cualquier parte de la parte
      superior del panel» — la cabecera completa de cada hoja
