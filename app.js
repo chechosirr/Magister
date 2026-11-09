@@ -1867,7 +1867,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r56";
+const EPUB_BUILD = "r57";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -2304,6 +2304,27 @@ const EPUB_CURL_RELEASE_MS = 336;
    automático (el de 30° de r24 quedó derogado por esta precisión)
    y sin que la punta cruce jamás al otro lado de su ancla. */
 const EPUB_EDGE_TILT_MAX = 15;
+/* r57 (Sergio, con su captura photo-97): en los pases HORIZON-
+   TALES la hoja queda BLOQUEADA en la inclinación de su foto —
+   medida sobre la captura por dos vías: extremos de la línea de
+   doblez 3,81° y ajuste de la banda de la sombra proyectada
+   3,88° → 3,85° desde la vertical, con la parte de arriba de la
+   hoja inclinada hacia el lado del avance. La hoja NUNCA cae a
+   vertical (0°) mientras el movimiento sea horizontal, en TODOS
+   los temas (claro, oscuro y Menta — la geometría es compartida,
+   solo cambian los tonos). Lo libre sigue existiendo SOLO si el
+   dedo sube o baja de forma deliberada: deriva vertical mayor
+   que EPUB_EDGE_TILT_FREE_PX desde la altura de bloqueo libera
+   el pase (la inclinación sigue al dedo, con el tope de 15° de
+   r30); cuando el movimiento vuelve a ser horizontal (banda
+   vertical calmada durante EPUB_EDGE_TILT_CALM_MS con avance
+   horizontal real), el pase se bloquea de nuevo en el grado
+   fijo. El paso entre un modo y otro va suavizado por fotograma
+   (EPUB_EDGE_TILT_SMOOTH): ningún salto de inclinación. */
+const EPUB_EDGE_TILT_FIXED = 3.85;
+const EPUB_EDGE_TILT_FREE_PX = 28;
+const EPUB_EDGE_TILT_CALM_MS = 240;
+const EPUB_EDGE_TILT_SMOOTH = 0.22;
 
 let epubOpen = false;
 /* Libro abierto en el lector (lo fija openBook con los datos del
@@ -3747,6 +3768,14 @@ function epubCurlTryBegin(g, x, y) {
        gesto, para medir el avance desde el nacimiento, no
        desde el borde. */
     mid: !!g.center, x0: (g.x0 || 0) - (g.ox || 0),
+    /* r57: estado del bloqueo de inclinación (solo pase de
+       borde): nace bloqueado en el grado fijo de photo-97;
+       tiltDy es el Δy efectivo ya suavizado respecto al ancla,
+       tiltYBase la altura del dedo al bloquear (referencia de
+       la deriva deliberada) y tiltHist las muestras recientes
+       del dedo para detectar la vuelta a horizontal. */
+    tiltFree: false, tiltDy: 0, tiltYBase: y,
+    tiltHist: [{ t: performance.now(), x: x, y: y }],
   };
   epubCurlBusy = true;
   epubCurlFrame();
@@ -3763,6 +3792,17 @@ function epubCurlMove(x, y) {
      trayectoria 2D exacta (como en r24/r25). */
   epubCurl.fx = epubCurl.bx + (x - epubCurl.bx) * epubCurl.dragGain;
   epubCurl.fy = epubCurl.by + (y - epubCurl.by) * epubCurl.dragGain;
+  /* r57: muestras recientes del dedo (solo pase de borde) para
+     el bloqueo de inclinación: liberar si sube/baja deliberado
+     y rebloquear cuando el movimiento vuelve a horizontal. */
+  if (epubCurl.mode === "edge" && epubCurl.tiltHist) {
+    const now = performance.now();
+    epubCurl.tiltHist.push({ t: now, x: epubCurl.fx, y: epubCurl.fy });
+    while (epubCurl.tiltHist.length > 40 ||
+           (epubCurl.tiltHist.length > 1 && now - epubCurl.tiltHist[0].t > 500)) {
+      epubCurl.tiltHist.shift();
+    }
+  }
   epubCurlFrame();
 }
 
@@ -3860,7 +3900,13 @@ function epubCurlCornerFrame() {
      «cuando hago un movimiento como de círculo con el dedo
      hace como una voltereta de la página; no puede hacer eso»).
    El resto de la página acompaña como siempre: la geometría
-   de doblez verdadero no cambia, solo el punto efectivo. */
+   de doblez verdadero no cambia, solo el punto efectivo.
+   r57 (Sergio, photo-97 — MANDA sobre el «sin Δy va vertical»
+   de r30): en horizontal el pase queda BLOQUEADO a 3,85° (el
+   grado de su foto) en todos los temas; libre solo si el dedo
+   sube o baja deliberado, y rebloqueo suave al volver a
+   horizontal. Ver EPUB_EDGE_TILT_FIXED y el cuerpo de la
+   función. */
 function epubCurlEdgeFrame() {
   const C = epubCurl;
   if (!C) return;
@@ -3872,8 +3918,50 @@ function epubCurlEdgeFrame() {
     if (C.dir > 0) F.x = Math.min(F.x, K.x + 24);
     else F.x = Math.max(F.x, K.x - 24);
     F.x = Math.max(-90, Math.min(C.W + 90, F.x));
-    F.y = Math.max(-90, Math.min(C.H + 90, F.y));
     const run = Math.abs(F.x - K.x);
+    if (!C.anim) {
+      /* r57 BLOQUEO DE INCLINACIÓN en horizontal (constantes
+         EPUB_EDGE_TILT_*): con el movimiento horizontal, el Δy
+         efectivo es el del grado fijo de photo-97 (3,85°) y la
+         hoja NUNCA cae a 0°. El signo sale de la geometría:
+         con F por debajo del ancla, la parte alta de la línea
+         de doblez se inclina hacia el lado del avance en los
+         dos sentidos (pasar y regresar). Si el dedo deriva más
+         de FREE_PX desde la altura de bloqueo, el pase queda
+         LIBRE y el Δy vuelve a ser el del dedo (r30, con su
+         tope de 15° abajo); cuando el movimiento vuelve a ser
+         horizontal (banda vertical calmada ≥ CALM_MS con avance
+         horizontal real), el pase se rebloquea. El Δy aplicado
+         se suaviza por fotograma (SMOOTH): ningún salto entre
+         fotogramas al entrar ni al salir del bloqueo. Durante
+         el asentamiento (C.anim) manda el camino de siempre. */
+      const dyFix = run * Math.tan(EPUB_EDGE_TILT_FIXED * Math.PI / 180);
+      if (C.tiltFree) {
+        const now = performance.now();
+        const h = C.tiltHist || [];
+        let i0 = -1;
+        for (let i = h.length - 1; i >= 0; i--) {
+          if (now - h[i].t >= EPUB_EDGE_TILT_CALM_MS) { i0 = i; break; }
+        }
+        if (i0 >= 0) {
+          let yMin = Infinity, yMax = -Infinity;
+          for (let i = i0; i < h.length; i++) {
+            if (h[i].y < yMin) yMin = h[i].y;
+            if (h[i].y > yMax) yMax = h[i].y;
+          }
+          if (yMax - yMin <= 10 && Math.abs(C.fx - h[i0].x) >= 14) {
+            C.tiltFree = false;
+            C.tiltYBase = C.fy;
+          }
+        }
+      } else if (Math.abs(C.fy - (C.tiltYBase != null ? C.tiltYBase : C.fy)) > EPUB_EDGE_TILT_FREE_PX) {
+        C.tiltFree = true;
+      }
+      const dyTarget = C.tiltFree ? (C.fy - K.y) : dyFix;
+      C.tiltDy = (C.tiltDy || 0) + (dyTarget - (C.tiltDy || 0)) * EPUB_EDGE_TILT_SMOOTH;
+      F.y = K.y + C.tiltDy;
+    }
+    F.y = Math.max(-90, Math.min(C.H + 90, F.y));
     const maxDy = run * Math.tan(EPUB_EDGE_TILT_MAX * Math.PI / 180);
     if (F.y > K.y + maxDy) F.y = K.y + maxDy;
     else if (F.y < K.y - maxDy) F.y = K.y - maxDy;
