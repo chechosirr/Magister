@@ -1867,7 +1867,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r58";
+const EPUB_BUILD = "r59";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -4201,6 +4201,10 @@ function epubCurlAnimate(complete) {
     DUR = Math.max(EPUB_CURL_RELEASE_MS, Math.min(560, Math.round(EPUB_CURL_RELEASE_MS * travel / (C.W + 240))));
   } else if (C.mode === "corner") {
     toX = C.kx; toY = C.ky;
+    /* r59: la duración de la vuelta crece con el recorrido,
+       como al cometer (ver la nota de la curva en stepFn). */
+    const travelC = Math.hypot(toX - fromX, toY - fromY);
+    DUR = Math.max(EPUB_CURL_RELEASE_MS, Math.min(560, Math.round(EPUB_CURL_RELEASE_MS * travelC / (C.W + 240))));
   } else {
     /* r58: al cancelar, la hoja se posa EXACTAMENTE en su
        ancla (antes la vuelta apuntaba a W+30/−30, fuera de la
@@ -4210,6 +4214,10 @@ function epubCurlAnimate(complete) {
        fotograma final de la vuelta ya es la página actual
        entera y el asentamiento no corta a nada. */
     toX = C.kx; toY = C.ky;
+    /* r59: la duración de la vuelta crece con el recorrido,
+       como al cometer (ver la nota de la curva en stepFn). */
+    const travelE = Math.hypot(toX - fromX, toY - fromY);
+    DUR = Math.max(EPUB_CURL_RELEASE_MS, Math.min(560, Math.round(EPUB_CURL_RELEASE_MS * travelE / (C.W + 240))));
   }
   const t0 = performance.now();
   const stepFn = (t) => {
@@ -4221,8 +4229,30 @@ function epubCurlAnimate(complete) {
        cancelar, easeOutQuart — aterrizaje largo y amortiguado:
        la hoja CAE de nuevo en su sitio y se posa suave, sin
        chasquido final. La duración (EPUB_CURL_RELEASE_MS) no
-       cambia. */
-    const e = complete ? 1 - (1 - k) * (1 - k) : 1 - Math.pow(1 - k, 4);
+       cambia.
+       r59 (Sergio, sobre la r58: «al devolver la hoja el
+       movimiento no se hace completo, sino que la hoja como
+       que desaparece. Quiero que lo haga completo el
+       movimiento de regreso»): al cancelar se abandona el
+       easeOutQuart por el MISMO easeOutQuad de cometer. La
+       causa, medida fotograma a fotograma sobre la r58: con
+       el cuart la distancia restante a la ancla cae como
+       (1−k)⁴ — a mitad de la animación ya solo quedaba el
+       6 % del recorrido (la franja visible de la hoja baja
+       de ~12 px hacia el ~48 % del tiempo) y la segunda
+       mitad de la vuelta era un arrastre subvisible junto
+       al borde: la hoja se desplomaba en la primera mitad y
+       «desaparecía» en vez de viajar de vuelta. Con el quad
+       la distancia restante cae como (1−k)²: la hoja sigue
+       presente y en movimiento continuo hasta ~el 75 % de
+       la vuelta y se posa con la misma caída suave de
+       siempre (la velocidad también tiende a cero). El
+       objetivo no cambia — el ancla exacta de la r58 — y la
+       punta se acerca en monótono sin cruzarla jamás: la
+       garantía de 0 fotogramas de página ajena se conserva
+       entera. La duración de la vuelta, además, crece con
+       el recorrido como al cometer (tope 560 ms). */
+    const e = 1 - (1 - k) * (1 - k);
     C.fx = fromX + (toX - fromX) * e;
     C.fy = fromY + (toY - fromY) * e;
     epubCurlFrame();
