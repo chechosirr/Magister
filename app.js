@@ -1867,7 +1867,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r57";
+const EPUB_BUILD = "r58";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -3431,7 +3431,16 @@ function epubCurlPoolSchedule() {
 window.addEventListener("resize", () => { if (epubOpen) { epubCurlLayerSync(); epubCurlPoolSchedule(); } });
 
 async function epubCurlPoolBuild() {
-  if (!epubOpen || !epubRendition || epubCurl || epubCurlBusy) return;
+  if (!epubOpen || !epubRendition) return;
+  /* r58: si hay un gesto (o un asentamiento) en curso, la
+     reconstrucción NO se pierde: se reintenta en breve. Antes
+     el retorno seco dejaba el pool con los clones de la
+     página anterior sin fecha de caducidad, y el siguiente
+     pase montaba la hoja sobre esa página. */
+  if (epubCurl || epubCurlBusy) {
+    setTimeout(() => { epubCurlPoolBuild().catch(() => {}); }, 350);
+    return;
+  }
   const token = ++epubPoolToken;
   let contents = [];
   try { contents = epubRendition.getContents() || []; } catch { contents = []; }
@@ -3464,6 +3473,11 @@ async function epubCurlPoolBuild() {
     if (loc && loc.start) { idx = loc.start.index; startPage = loc.start.displayed.page; }
     if (loc && loc.end) { endPage = loc.end.displayed.page; endTotal = loc.end.displayed.total; }
   } catch { /* sin ubicación todavía */ }
+  /* r58: sello de la página fotografiada (sección:página de
+     la ubicación al construir). epubCurlTryBegin lo contrasta
+     con la ubicación viva y se niega a montar un pase con
+     clones de otra página. */
+  D.locKey = idx >= 0 ? idx + ":" + startPage : null;
   if (endPage < endTotal) D.next = { html, frameW: D.cur.frameW, frameH: D.cur.frameH, offX: D.cur.offX - step };
   if (startPage > 1) D.prev = { html, frameW: D.cur.frameW, frameH: D.cur.frameH, offX: D.cur.offX + step };
   if ((!D.next || !D.prev) && epubBook && idx >= 0) {
@@ -3486,6 +3500,16 @@ async function epubCurlPoolBuild() {
     } catch { /* cruces de sección no listos: ese gesto usará el pliegue clásico */ }
   }
   if (token !== epubPoolToken || !epubOpen) return;
+  /* r58: jamás intercambiar los clones bajo una hoja en
+     movimiento: si un gesto (o un asentamiento) está en curso
+     cuando la reconstrucción por fin aterriza — la vía R2 de
+     los bordes de capítulo puede tardar segundos —, se
+     reintenta tras el gesto en vez de cambiar el fondo a
+     mitad de pase. */
+  if (epubCurl || epubCurlBusy) {
+    setTimeout(() => { epubCurlPoolBuild().catch(() => {}); }, 350);
+    return;
+  }
   epubPoolData = D;
   epubCurlPoolRender(D);
 }
@@ -3688,10 +3712,34 @@ function epubCurlLayerSync() {
   layer.style.height = sr.height + "px";
 }
 
+/* r58: clave de la página viva (sección:página) y contraste
+   con el sello del pool. Un pool obsoleto — su reconstrucción
+   saltó con un gesto activo o aún viaja por la vía R2 — no
+   puede montar pases: enseñaría los clones de la página
+   anterior bajo la hoja. */
+function epubPoolLocKey() {
+  try {
+    const loc = epubRendition && epubRendition.currentLocation();
+    if (loc && loc.start) return loc.start.index + ":" + loc.start.displayed.page;
+  } catch { /* sin ubicación legible */ }
+  return null;
+}
+
+function epubPoolIsStale() {
+  const D = epubPoolData;
+  if (!D || !D.ready) return true;
+  const live = epubPoolLocKey();
+  return !!(D.locKey && live && D.locKey !== live);
+}
+
 function epubCurlTryBegin(g, x, y) {
   if (epubCurl || epubCurlBusy) return false;
   const D = epubPoolData;
   if (!D || !D.ready) return false;
+  /* r58: pool de OTRA página → este gesto va por el pliegue
+     clásico (sin clones) y se programa la reconstrucción:
+     ninguna página ajena aparece bajo la hoja. */
+  if (epubPoolIsStale()) { epubCurlPoolSchedule(); return false; }
   const key = g.dir > 0 ? "next" : "prev";
   if (!D[key] || !epubCurlRevEls[key] || !epubCurlStripEls) return false;
   const layer = document.getElementById("epub-curl");
@@ -3857,9 +3905,12 @@ function epubCurlCornerFrame() {
     /* Anti-voltereta (r30): la punta nunca cruza al otro lado de
        su esquina ancla — si el dedo rodea y vuelve más allá de la
        esquina, el reflejo se quedaba del otro lado y la hoja daba
-       una voltereta sobre sí misma (reporte de Sergio). */
-    if (C.dir > 0) F.x = Math.min(F.x, K.x + 24);
-    else F.x = Math.max(F.x, K.x - 24);
+       una voltereta sobre sí misma (reporte de Sergio).
+       r58: la holgura de 24 px más allá del ancla se retira por
+       la misma razón que en el pase de borde: cruzar el ancla
+       invierte el doblez y el fondo salta a la página vecina. */
+    if (C.dir > 0) F.x = Math.min(F.x, K.x);
+    else F.x = Math.max(F.x, K.x);
     /* Cono diagonal de ~45° (r21): lo vertical queda amarrado a lo
        horizontal; un arrastre con dominante vertical apenas asoma
        la esquina en diagonal y al soltar la página queda como
@@ -3915,8 +3966,18 @@ function epubCurlEdgeFrame() {
   /* r34: con la vuelta cometida (C.animFull), sin topes — la
      hoja recorre la página entera y sale por completo. */
   if (!C.animFull) {
-    if (C.dir > 0) F.x = Math.min(F.x, K.x + 24);
-    else F.x = Math.max(F.x, K.x - 24);
+    /* r58: la punta NUNCA cruza el ancla (antes: 24 px de
+       holgura). Al cruzarla, el semiplano del doblez se
+       invierte: la zona plana y la solapa salen enteras de la
+       página y el fondo queda por unos fotogramas en la
+       página VECINA revelada — el «salto rápido a la página
+       anterior» que Sergio veía al devolver la hoja sin
+       cambiar de página (medido en la r58: ~5 fotogramas con
+       la página siguiente ocupando el fondo al soltar). En el
+       ancla exacta, el tope de inclinación (|Δy| ≤ recorrido)
+       lleva F.y a K.y y la hoja queda posada, distancia ~0. */
+    if (C.dir > 0) F.x = Math.min(F.x, K.x);
+    else F.x = Math.max(F.x, K.x);
     F.x = Math.max(-90, Math.min(C.W + 90, F.x));
     const run = Math.abs(F.x - K.x);
     if (!C.anim) {
@@ -4141,8 +4202,14 @@ function epubCurlAnimate(complete) {
   } else if (C.mode === "corner") {
     toX = C.kx; toY = C.ky;
   } else {
-    toX = C.dir > 0 ? C.W + 30 : -30;
-    toY = fromY;
+    /* r58: al cancelar, la hoja se posa EXACTAMENTE en su
+       ancla (antes la vuelta apuntaba a W+30/−30, fuera de la
+       página: al cruzar el borde el doblez se invertía y el
+       fondo saltaba a la página vecina durante casi toda la
+       vuelta — el fallo de Sergio). Posada en el ancla, el
+       fotograma final de la vuelta ya es la página actual
+       entera y el asentamiento no corta a nada. */
+    toX = C.kx; toY = C.ky;
   }
   const t0 = performance.now();
   const stepFn = (t) => {
@@ -4184,7 +4251,11 @@ function epubCurlSettle(complete) {
     const flatWrap = document.getElementById("epub-curl-flat");
     if (flatWrap) { flatWrap.style.clipPath = ""; flatWrap.style.visibility = ""; }
     epubCurlBusy = false;
-    if (complete) epubCurlPoolSchedule();
+    /* r58: la reconstrucción se programa al cometer (lo de
+       siempre) y TAMBIÉN tras cancelar si el pool quedó
+       obsoleto: el siguiente pase nunca monta clones de otra
+       página. */
+    if (complete || epubPoolIsStale()) epubCurlPoolSchedule();
   };
   if (!complete || !rend) { finish(); return; }
   /* r34 PRECARGA (pedido de Sergio: «tener precargadas la
