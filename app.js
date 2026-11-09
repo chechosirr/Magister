@@ -1867,7 +1867,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r61";
+const EPUB_BUILD = "r62";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -2341,6 +2341,26 @@ const EPUB_EDGE_TILT_FIXED = 3.85;
 const EPUB_EDGE_TILT_FREE_PX = 28;
 const EPUB_EDGE_TILT_CALM_MS = 240;
 const EPUB_EDGE_TILT_SMOOTH = 0.22;
+/* r62: romper el bloqueo se
+   sentía TRABADO (Sergio: «al romper el bloqueo moviendo el
+   dedo hacia arriba o hacia abajo se traba un poco»). Medido
+   fotograma a fotograma sobre la r61: el dedo recorría los
+   28 px del umbral con la inclinación CONGELADA en el grado
+   fijo (zona muerta: la hoja no responde nada al Δy) y al
+   cruzar, el objetivo del Δy saltaba de golpe del grado fijo
+   a la posición del dedo (hueco de hasta ~31 px) y el suavi-
+   zado lo perseguía con un tirón inicial de hasta 3,26° en un
+   solo fotograma (velocidad ~3× la del dedo). Ahora el umbral
+   es el CENTRO de una ventana de mezcla de ±BLEND_SPAN px: la
+   inclinación se mezcla de forma continua (smoothstep) desde
+   el grado fijo hasta seguir al dedo al acercarse y cruzar el
+   umbral — sin zona muerta larga ni salto que perseguir; el
+   dedo siente que la hoja «cede» con suavidad. El bloqueo en
+   horizontal puro (deriva < FREE_PX−SPAN) no cambia: grado
+   fijo exacto, como pidió Sergio («hay un bloqueo, está
+   bien»). tiltFree se engancha al llegar la mezcla a 1, para
+   que el rebloqueo calmado de la r57 siga funcionando igual. */
+const EPUB_EDGE_TILT_BLEND_SPAN = 20;
 
 let epubOpen = false;
 /* Libro abierto en el lector (lo fija openBook con los datos del
@@ -2413,13 +2433,13 @@ function epubHtml() {
       <p class="epub-loading" id="epub-loading">${T("Abriendo el libro…")}</p>
       <p class="epub-muestra-note" id="epub-muestra-note" data-action="epub-muestra-ok" hidden>Muestra gratuita: estás leyendo el primer capítulo. Con la suscripción, el libro completo. <span aria-hidden="true">✕</span></p>
       <div class="epub-top-backdrop" id="epub-top-backdrop" hidden></div>
+      <div class="epub-sheet-backdrop" id="epub-sheet-backdrop" hidden></div>
       <div class="epub-toc epub-topsheet" id="epub-toc" hidden>
         <div class="epub-panel-head">
           <p class="epub-toc-title">${T("Índice")}</p>
         </div>
         <div class="epub-topsheet-scroll" id="epub-toc-list"><p class="epub-toc-empty">${T("Cargando el índice…")}</p></div>
         <div class="epub-topsheet-grip" data-topgrip="epub-toc" aria-hidden="true"><span></span></div>
-        <button type="button" class="epub-panel-x" data-action="epub-toc" aria-label="${T("Cerrar el índice")}">×</button>
       </div>
       <div class="epub-toc epub-topsheet" id="epub-search" hidden>
         <div class="epub-panel-head">
@@ -2435,7 +2455,6 @@ function epubHtml() {
         </div>
         <div class="epub-topsheet-scroll epub-search-results" id="epub-search-results"></div>
         <div class="epub-topsheet-grip" data-topgrip="epub-search" aria-hidden="true"><span></span></div>
-        <button type="button" class="epub-panel-x" data-action="epub-search-close" aria-label="${T("Cerrar la búsqueda")}">×</button>
       </div>
       <div class="epub-toc epub-topsheet epub-menu" id="epub-menu" hidden>
         <div class="epub-panel-head">
@@ -2466,21 +2485,16 @@ function epubHtml() {
             <input type="range" id="epub-warm" min="0" max="100" step="1" value="0" aria-label="${T("Calidez")}">
           </div>
         </div>
-        <button type="button" class="epub-panel-x" data-action="epub-menu" aria-label="${T("Cerrar el menú")}">×</button>
       </div>
       <div class="epub-toc epub-notes" id="epub-notes" hidden>
         <div class="epub-panel-head">
           <p class="epub-toc-title">${T("Mis notas")}</p>
         </div>
         <div id="epub-notes-list"><p class="epub-toc-empty">${T("Cargando las notas…")}</p></div>
-        <div class="epub-panel-foot">
-          <button type="button" class="epub-dict-close" data-action="epub-notes" aria-label="${T("Cerrar las notas")}">×</button>
-        </div>
       </div>
       <div class="epub-dict" id="epub-dict" hidden>
         <div class="epub-dict-head">
           <p class="epub-dict-word" id="epub-dict-word">${T("Palabra")}</p>
-          <button type="button" class="epub-dict-close" data-action="epub-dict-close" aria-label="${T("Cerrar la tarjeta")}">×</button>
         </div>
         <div class="epub-dict-body" id="epub-dict-body"><p class="epub-dict-status">${T("Buscando…")}</p></div>
         <p class="epub-dict-src" id="epub-dict-src">${T("Diccionario · Wikcionario, el diccionario libre")}</p>
@@ -2488,7 +2502,6 @@ function epubHtml() {
       <div class="epub-dict epub-selmenu" id="epub-selmenu" hidden>
         <div class="epub-dict-head">
           <p class="epub-sel-text" id="epub-sel-text">«…»</p>
-          <button type="button" class="epub-dict-close" data-action="epub-selmenu-close" aria-label="${T("Cerrar menú")}">×</button>
         </div>
         <div class="epub-sel-grid" id="epub-actions-menu">
           <button type="button" data-action="epub-act-underline" id="epub-act-underline">${T("Subrayar")}</button>
@@ -2507,7 +2520,6 @@ function epubHtml() {
         <div class="epub-ws-handle" id="epub-ws-handle"><span class="epub-ws-grip"></span></div>
         <div class="epub-ws-head">
           <p class="epub-ws-word" id="epub-ws-word">Palabra</p>
-          <button type="button" class="epub-dict-close" data-action="epub-ws-close" aria-label="${T("Cerrar la hoja")}">×</button>
         </div>
         <div class="epub-ws-scroll" id="epub-ws-scroll">
           <div class="epub-ws-box">
@@ -2538,7 +2550,6 @@ function epubHtml() {
       <div class="epub-dict epub-noteview" id="epub-noteview" hidden>
         <div class="epub-dict-head">
           <p class="epub-sel-text" id="epub-noteview-quote">«…»</p>
-          <button type="button" class="epub-dict-close" data-action="epub-noteview-close" aria-label="${T("Cerrar la nota")}">×</button>
         </div>
         <p class="epub-noteview-text" id="epub-noteview-text"></p>
         <div class="epub-note-actions">
@@ -2549,7 +2560,6 @@ function epubHtml() {
       <div class="epub-dict epub-noteed" id="epub-noteed" hidden>
         <div class="epub-dict-head">
           <p class="epub-sel-text" id="epub-note-quote">«…»</p>
-          <button type="button" class="epub-dict-close" data-action="epub-note-cancel" aria-label="${T("Cancelar la nota")}">×</button>
         </div>
         <textarea id="epub-note-text" class="epub-note-textarea" rows="3" placeholder="${T("Escribe tu nota sobre este pasaje…")}"></textarea>
         <div class="epub-note-actions">
@@ -2664,6 +2674,7 @@ function epubChromeShow() {
   const sh = document.getElementById("epub-shell");
   if (sh) sh.classList.remove("chrome-off");
   epubChromeArm();
+  epubSheetBackdropSync();
 }
 
 function epubChromeHide() {
@@ -2702,6 +2713,7 @@ function epubCloseOverlays(except) {
   }
   epubDictSeq++;
   epubTopBackdropSync();
+  epubSheetBackdropSync();
   epubPoke();
 }
 
@@ -3838,7 +3850,7 @@ function epubCurlTryBegin(g, x, y) {
        tiltYBase la altura del dedo al bloquear (referencia de
        la deriva deliberada) y tiltHist las muestras recientes
        del dedo para detectar la vuelta a horizontal. */
-    tiltFree: false, tiltDy: 0, tiltYBase: y,
+    tiltFree: false, tiltDy: 0, tiltYBase: y, tiltBlend: 0,
     tiltHist: [{ t: performance.now(), x: x, y: y }],
     /* r61: el brillo (wash) se ata al avance del pase: washPeak
        es la mayor distancia punta–ancla alcanzada en el gesto.
@@ -4010,15 +4022,19 @@ function epubCurlEdgeFrame() {
          hoja NUNCA cae a 0°. El signo sale de la geometría:
          con F por debajo del ancla, la parte alta de la línea
          de doblez se inclina hacia el lado del avance en los
-         dos sentidos (pasar y regresar). Si el dedo deriva más
-         de FREE_PX desde la altura de bloqueo, el pase queda
-         LIBRE y el Δy vuelve a ser el del dedo (r30, con su
-         tope de 15° abajo); cuando el movimiento vuelve a ser
-         horizontal (banda vertical calmada ≥ CALM_MS con avance
+         dos sentidos (pasar y regresar). Si el dedo deriva
+         desde la altura de bloqueo, el pase queda LIBRE y el
+         Δy vuelve a ser el del dedo (r30, con su tope de 15°
+         abajo); cuando el movimiento vuelve a ser horizontal
+         (banda vertical calmada ≥ CALM_MS con avance
          horizontal real), el pase se rebloquea. El Δy aplicado
          se suaviza por fotograma (SMOOTH): ningún salto entre
          fotogramas al entrar ni al salir del bloqueo. Durante
-         el asentamiento (C.anim) manda el camino de siempre. */
+         el asentamiento (C.anim) manda el camino de siempre.
+         r62: la liberación ya no es un portazo en
+         FREE_PX — la mezcla bloqueo→libre es continua en la
+         ventana FREE_PX ± BLEND_SPAN (ver la constante); el
+         rebloqueo calmado sigue igual. */
       const dyFix = run * Math.tan(EPUB_EDGE_TILT_FIXED * Math.PI / 180);
       if (C.tiltFree) {
         const now = performance.now();
@@ -4038,10 +4054,26 @@ function epubCurlEdgeFrame() {
             C.tiltYBase = C.fy;
           }
         }
-      } else if (Math.abs(C.fy - (C.tiltYBase != null ? C.tiltYBase : C.fy)) > EPUB_EDGE_TILT_FREE_PX) {
-        C.tiltFree = true;
       }
-      const dyTarget = C.tiltFree ? (C.fy - K.y) : dyFix;
+      /* r62: mezcla continua bloqueo → libre. La
+         deriva del dedo respecto a la altura de bloqueo se
+         traduce a un factor de mezcla 0..1 con smoothstep en
+         la ventana FREE_PX ± BLEND_SPAN; el objetivo del Δy es
+         la mezcla entre el grado fijo y el Δy del dedo, así
+         que es CONTINUO en la posición del dedo: al acercarse
+         al umbral la hoja ya cede un poco, al cruzarlo sigue
+         cediendo sin escalón, y si el dedo vuelve hacia la
+         altura de bloqueo la mezcla se deshace sola, también
+         suave. tiltFree se engancha cuando la mezcla llega a
+         1 (para el rebloqueo calmado de arriba). */
+      const tiltBase = (C.tiltYBase != null ? C.tiltYBase : C.fy);
+      const tiltDev = Math.abs(C.fy - tiltBase);
+      let blendT = (tiltDev - (EPUB_EDGE_TILT_FREE_PX - EPUB_EDGE_TILT_BLEND_SPAN)) / (2 * EPUB_EDGE_TILT_BLEND_SPAN);
+      blendT = blendT < 0 ? 0 : blendT > 1 ? 1 : blendT;
+      const tiltBlend = blendT * blendT * (3 - 2 * blendT);
+      C.tiltBlend = tiltBlend;
+      if (tiltBlend >= 0.999) C.tiltFree = true;
+      const dyTarget = dyFix + ((C.fy - K.y) - dyFix) * tiltBlend;
       C.tiltDy = (C.tiltDy || 0) + (dyTarget - (C.tiltDy || 0)) * EPUB_EDGE_TILT_SMOOTH;
       F.y = K.y + C.tiltDy;
     }
@@ -4654,6 +4686,50 @@ function epubTopBackdropSync() {
   const sea = document.getElementById("epub-search");
   const men = document.getElementById("epub-menu");
   bd.hidden = !((toc && !toc.hidden) || (sea && !sea.hidden) || (men && !men.hidden));
+}
+
+/* r62: las hojas y tarjetas
+   inferiores (palabra, selección, diccionario, notas, vista y
+   editor de nota) no tenían fondo: un toque en la página con
+   una abierta caía en la lámina de gestos y podía seleccionar
+   o pasar la página. Ahora, con cualquiera abierta se tiende
+   la lámina transparente #epub-sheet-backdrop sobre la hoja de
+   lectura y el primer toque fuera del panel SOLO lo cierra —
+   no llega a la lámina de gestos: ni selecciona, ni pasa la
+   página, ni alterna las barras. Sin panel abierto la lámina
+   no existe y el toque se comporta como siempre. Un vigía
+   (MutationObserver sobre el atributo hidden de los seis
+   paneles) la mantiene en sincronía abra quien abra y cierre
+   quien cierre (botones, arrastres o cierres en cadena). */
+const EPUB_SHEET_PANELS = ["epub-wordsheet", "epub-selmenu", "epub-dict", "epub-notes", "epub-noteview", "epub-noteed"];
+function epubSheetBackdropSync() {
+  const bd = document.getElementById("epub-sheet-backdrop");
+  if (!bd) return;
+  if (!bd.__mgSheetHook) {
+    bd.__mgSheetHook = true;
+    bd.addEventListener("click", () => { epubSheetBackdropClose(); });
+    const obs = new MutationObserver(() => epubSheetBackdropSync());
+    for (const id of EPUB_SHEET_PANELS) {
+      const el = document.getElementById(id);
+      if (el) obs.observe(el, { attributes: true, attributeFilter: ["hidden"] });
+    }
+  }
+  bd.hidden = !EPUB_SHEET_PANELS.some((id) => { const el = document.getElementById(id); return el && !el.hidden; });
+}
+
+function epubSheetBackdropClose() {
+  const open = (id) => { const el = document.getElementById(id); return el && !el.hidden; };
+  /* Cada panel se cierra por su propio cierre (limpian su
+     estado: marca de selección, secuencias, borrador de nota);
+     el barrido final cubre cualquier resto. */
+  if (open("epub-noteed")) epubNoteCancel();
+  if (open("epub-wordsheet")) epubWordSheetClose();
+  if (open("epub-dict")) epubDictClose();
+  if (open("epub-selmenu")) epubSelMenuClose();
+  if (open("epub-noteview")) epubNoteViewClose();
+  if (open("epub-notes")) epubToggleNotes();
+  epubCloseOverlays();
+  epubPoke();
 }
 
 /* Blindaje del CONTENIDO de las hojas (r33, pedido de Sergio):
@@ -5818,10 +5894,44 @@ async function epubWsLoadMeaning() {
   const defs = word ? await epubFetchDefs(word) : null;
   if (seq !== epubWsSeq) return;
   if (!defs || !defs.length) {
+    epubWsDefs = null;
     box.innerHTML = `<p class="epub-dict-none">${T("Sin definición para esta palabra.")}</p>`;
     return;
   }
-  box.innerHTML = epubDefsHtml(defs);
+  epubWsDefs = defs;
+  epubWsDefExpanded = false;
+  epubWsRenderMeaning();
+}
+
+/* r62: el cuadro de Significado
+   nace recogido (las tres primeras acepciones, como siempre) y
+   al TOCAR el cuadro se despliega la definición COMPLETA —
+   todas las acepciones del lema, sin recorte —; otro toque lo
+   vuelve a recoger. La pista bajo las acepciones solo aparece
+   cuando hay más texto que mostrar. */
+let epubWsDefs = null;
+let epubWsDefExpanded = false;
+function epubWsRenderMeaning() {
+  const box = document.getElementById("epub-ws-meaning");
+  if (!box || !epubWsDefs) return;
+  const nMain = epubWsDefs.filter((d) => !d.variante).length;
+  const nVar = epubWsDefs.filter((d) => d.variante).length;
+  const recortada = nMain > 3 || nVar > 2;
+  box.innerHTML = epubFormaHeadHtml(epubWsDefs)
+    + (epubWsDefExpanded ? epubDefsHtmlFull(epubWsDefs) : epubDefsHtml(epubWsDefs))
+    + (recortada ? `<p class="epub-dict-hint epub-ws-more">${epubWsDefExpanded ? T("Toca para recoger la definición") : T("Toca para ver la definición completa")}</p>` : "");
+  const wrap = box.closest(".epub-ws-box");
+  if (wrap) {
+    wrap.style.cursor = recortada ? "pointer" : "";
+    if (!wrap.__mgDefHook) {
+      wrap.__mgDefHook = true;
+      wrap.addEventListener("click", () => {
+        if (!epubWsDefs) return;
+        epubWsDefExpanded = !epubWsDefExpanded;
+        epubWsRenderMeaning();
+      });
+    }
+  }
 }
 
 function epubWordSheetClose() {
@@ -6073,7 +6183,11 @@ function epubDictOpen(word) {
 async function epubDictLocal(term) {
   if (!MAGISTER_DICT_ENABLED) return null;
   try {
-    const r = await fetch(MAGISTER_API_BASE + "/diccionario?palabra=" + encodeURIComponent(term));
+    /* r62: formas=lema — si la palabra es una forma
+       (conjugación, plural, femenino…), el servicio sigue al
+       lema y devuelve SUS definiciones, con j.forma avisando
+       del salto; la lista lo arrastra como «formaDe». */
+    const r = await fetch(MAGISTER_API_BASE + "/diccionario?palabra=" + encodeURIComponent(term) + "&formas=lema");
     if (!r.ok) return null;
     const j = await r.json();
     if (!j) return null;
@@ -6081,6 +6195,7 @@ async function epubDictLocal(term) {
     for (const d of j.definiciones || []) {
       if (d && d.texto) out.push({ pos: d.pos || "", text: d.texto });
     }
+    if (j.forma && j.forma.lema) out.formaDe = { forma: j.forma.palabra || term, lema: j.forma.lema };
     const v = j.variante;
     if (v && Array.isArray(v.definiciones)) {
       for (const d of v.definiciones) {
@@ -6105,9 +6220,9 @@ async function epubFetchDefs(term) {
   return defs;
 }
 
-function epubDefsHtml(defs) {
-  const main = defs.filter((d) => !d.variante).slice(0, 3);
-  const vars = defs.filter((d) => d.variante).slice(0, 2);
+function epubDefsHtml(defs, maxMain, maxVar) {
+  const main = defs.filter((d) => !d.variante).slice(0, maxMain == null ? 3 : maxMain);
+  const vars = defs.filter((d) => d.variante).slice(0, maxVar == null ? 2 : maxVar);
   let varHeadShown = false;
   return [...main, ...vars].map((d) => {
     let head = "";
@@ -6117,6 +6232,21 @@ function epubDefsHtml(defs) {
     }
     return head + `<div class="epub-dict-def">${d.pos ? `<p class="epub-dict-pos">${esc(d.pos)}</p>` : ""}<p class="epub-dict-text">${esc(d.text)}</p></div>`;
   }).join("");
+}
+
+/* La definición COMPLETA (r62): todas las acepciones,
+   sin el recorte de 3+2 de la vista recogida. */
+function epubDefsHtmlFull(defs) {
+  return epubDefsHtml(defs, Infinity, Infinity);
+}
+
+/* Cabecera cuando la palabra tocada era una forma y las
+   definiciones son las del lema (formas=lema): «sufrirían» —
+   forma de «sufrir». */
+function epubFormaHeadHtml(defs) {
+  return defs && defs.formaDe
+    ? `<p class="epub-dict-var">«${esc(defs.formaDe.forma)}» — ${T("forma de")} «${esc(defs.formaDe.lema)}»</p>`
+    : "";
 }
 
 async function epubDictLookup(word, seq) {
@@ -6129,7 +6259,7 @@ async function epubDictLookup(word, seq) {
       <p class="epub-dict-hint">${T("El diccionario busca la palabra tal como está escrita; prueba con otra palabra del texto.")}</p>`;
     return;
   }
-  body.innerHTML = epubDefsHtml(defs);
+  body.innerHTML = epubFormaHeadHtml(defs) + epubDefsHtml(defs);
 }
 
 /* Wikcionario (es.wiktionary.org) por la API de MediaWiki: el

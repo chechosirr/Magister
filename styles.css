@@ -852,6 +852,18 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
 
 .epub-top-backdrop[hidden] { display: none; }
 
+/* r62: lámina transparente que recoge el primer toque
+   sobre la hoja de lectura cuando una hoja o tarjeta inferior
+   está abierta (palabra, selección, diccionario, notas, vista o
+   editor de nota): ese toque SOLO cierra el panel — no llega a
+   la lámina de gestos, así que ni selecciona ni pasa la página.
+   Va bajo las barras (z 70) y los paneles (z 75+) y sobre la
+   lámina de gestos (z 20). Sin fondo: el cristal de las hojas
+   se sigue viendo sobre la página tal cual, sin velo nuevo. */
+.epub-sheet-backdrop { position: absolute; inset: 0; z-index: 64; background: transparent; }
+
+.epub-sheet-backdrop[hidden] { display: none; }
+
 /* Buscador en el libro (r19). */
 .epub-search-bar { display: flex; gap: 8px; margin: 2px 0 6px; }
 
