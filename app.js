@@ -1867,7 +1867,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r62";
+const EPUB_BUILD = "r63";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -4811,6 +4811,20 @@ function epubTopAttach() {
       drag = null;
       if (!p) return;
       if (h < H * 0.38) { p.style.height = ""; epubCloseOverlays(); epubPoke(); return; }
+      /* r63 (pedido de Sergio, probado en preview como r62p):
+         «el menú desplegable del índice quiero que se vaya
+         arrastrando suavemente pero que se detenga donde yo
+         quite el dedo. A veces pasa que le quito el dedo y se
+         baja todo o se sube». La hoja del ÍNDICE ya no salta a
+         los topes al soltar: se queda exactamente a la altura
+         donde el dedo la dejó — el move ya dejó esa altura en
+         style.height, así que basta no sobrescribirla (a lo
+         sumo el redondeo de 1 px del propio arrastre). El
+         cierre por arrastre (bajo el 38 %) y el toque fuera
+         quedan intactos. El BUSCADOR y el menú comparten este
+         mismo attachTopDrag y conservan sus topes de siempre:
+         el cambio va acotado al Índice, como se pidió. */
+      if (panelId === "epub-toc") return;
       p.style.height = (h > H * 0.72 ? H : Math.round(H / 2)) + "px";
     };
     zone.addEventListener("touchstart", start, { passive: true });
