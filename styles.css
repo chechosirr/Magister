@@ -197,7 +197,9 @@ footer.site-footer p { font-size: 12px; color: var(--dim); margin: 0; }
 
 .searchbox { display: flex; width: 100%; align-items: center; gap: 8px; border-radius: 999px; padding: 6px 6px 6px 16px; }
 .searchbox svg { width: 18px; height: 18px; flex-shrink: 0; }
-.searchbox input { min-width: 0; flex: 1; background: transparent; border: none; outline: none; font-size: 15px; }
+/* r70: 16px — con menos, Safari hace zoom automático al enfocar
+   el buscador y ese zoom se heredaba al abrir un libro. */
+.searchbox input { min-width: 0; flex: 1; background: transparent; border: none; outline: none; font-size: 16px; }
 .searchbox button { flex-shrink: 0; border: none; border-radius: 999px; padding: 8px 16px; font-size: 14px; font-weight: 700; }
 .searchbox.dark { border: 1px solid rgba(255,255,255,0.4); background: rgba(0,0,0,0.4); box-shadow: 0 4px 18px rgba(0,0,0,0.3); backdrop-filter: blur(12px); }
 .searchbox.dark svg { color: rgba(255,255,255,0.7); }
@@ -333,7 +335,7 @@ h1.view-title.center { text-align: center; }
 .progress { height: 6px; overflow: hidden; border-radius: 999px; background: var(--surface-2); }
 .progress > div { height: 100%; background: var(--brass); }
 .reader-nav-row { margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.reader-nav select { border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 8px; font-size: 14px; }
+.reader-nav select { border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 8px; font-size: 16px; }
 .center-card { text-align: center; }
 .center-card .inner { margin-left: auto; margin-right: auto; }
 
@@ -878,7 +880,7 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
 .epub-search-input {
   flex: 1 1 auto; min-width: 0; box-sizing: border-box;
   background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.22);
-  border-radius: 10px; color: #f5f5f7; padding: 10px 12px; font-size: 15px;
+  border-radius: 10px; color: #f5f5f7; padding: 10px 12px; font-size: 16px;
 }
 
 .epub-search-go {
@@ -1115,7 +1117,7 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
   width: 100%; box-sizing: border-box; margin-top: 10px;
   background: rgba(255,255,255,0.06); color: #f5f5f7;
   border: 1px solid rgba(255,255,255,0.2); border-radius: 10px;
-  padding: 10px 12px; font-size: 15px; line-height: 1.5;
+  padding: 10px 12px; font-size: 16px; line-height: 1.5;
   font-family: inherit; resize: vertical;
 }
 
@@ -1266,7 +1268,7 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
   width: 100%; box-sizing: border-box; margin: 2px 0 8px;
   background: rgba(255,255,255,0.07); color: #f5f5f7;
   border: 1px solid rgba(255,255,255,0.22); border-radius: 10px;
-  padding: 9px 10px; font-size: 14px;
+  padding: 9px 10px; font-size: 16px;
 }
 
 .epub-dict-var {

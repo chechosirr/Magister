@@ -2158,7 +2158,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r69";
+const EPUB_BUILD = "r70";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -2844,6 +2844,9 @@ let epubTouchEndAt = 0;
    táctil principal del lector. epubSheetOff = la lámina está
    retirada (modo selección: el tacto va directo al iframe). */
 let epubSheetGesture = null;
+/* Último toque simple sobre la lámina (r70): lo usa la guardia
+   contra el doble toque de Safari. */
+let epubLastTap = null;
 /* Sello de la última selección cerrada por la lámina: sirve para
    no confundir el clic fantasma sobre una anotación con un toque
    deliberado en ella (ver epubOnAnnoTap). */
@@ -3744,6 +3747,7 @@ function epubSheetEnd(x, y) {
     const complete = adv >= EPUB_TURN_DX || (adv >= 24 && velDir >= 0.45);
     epubFoldSettle(g.dir, complete);
   } else if (Math.abs(dx) < 12 && Math.abs(dy) < 12 && dur < 600) {
+    epubLastTap = { t: Date.now(), x, y };
     /* Prioridad (r19): un toque sobre una marca de NOTA abre la
        vista de la nota; tocar fuera de marcas alterna controles
        como siempre. */
@@ -3793,6 +3797,24 @@ function epubAttachSheet() {
   }, { passive: false });
   el.addEventListener("gesturestart", (e) => {
     if (epubOpen && e.cancelable) e.preventDefault();
+  }, { passive: false });
+  /* Doble toque (r70): el zoom por doble toque de Safari es de UN
+     dedo — no lo cubren ni la guardia multitáctil ni gesturestart
+     de la r69. Si un segundo toque simple arranca en el mismo
+     sitio a menos de 350 ms del toque anterior, se cancela en
+     seco (la lámina ya arrancó el gesto: se deshace). Un pase de
+     hoja rápido NO es un toque simple en el mismo sitio, así que
+     las vueltas seguidas no se tocan. Es la red de seguridad; el
+     candado de fondo es el viewport bloqueado mientras se lee. */
+  el.addEventListener("touchstart", (e) => {
+    if (!epubOpen || !epubLastTap || !e.touches || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const dt = Date.now() - epubLastTap.t;
+    const dd = Math.hypot(t.clientX - epubLastTap.x, t.clientY - epubLastTap.y);
+    if (dt < 350 && dd < 48) {
+      if (e.cancelable) e.preventDefault();
+      epubSheetCancelGesture();
+    }
   }, { passive: false });
   el.addEventListener("touchmove", (e) => {
     if (e.touches && e.touches.length > 1) {
@@ -4989,6 +5011,7 @@ let epubMinimal = false;
 
 async function initEpubReader() {
   epubOpen = true;
+  epubViewportLock();
   epubCurlLayerSync();
   const seq = ++epubInitSeq;
   if (!epubCurrent) {
@@ -5066,6 +5089,34 @@ function epubTeardownBook() {
    veía más grande, corrido a la derecha y cortado por el borde
    (así lo reportó Sergio con la Biblia bilingüe). Fuera del
    lector no se toca nada: el resto de la página sigue igual. */
+/* Candado de viewport del lector (r70): el segundo round del
+   «se hace zoom». La r69 cancelaba los GESTOS dentro del lector,
+   pero el zoom que reportó Sergio con los libros convertidos no
+   nacía de un gesto: la página YA venía ampliada al abrir el
+   libro — el zoom automático de Safari al enfocar un control de
+   menos de 16px (el buscador del catálogo medía 15px) se quedaba
+   pegado al cambiar de vista, y dentro del lector las guardias
+   de la r69 hasta impedían deshacerlo. Al abrir un libro se
+   reescribe el meta viewport con la escala exacta y bloqueada:
+   iOS reevalúa el viewport al cambiar el meta y la vista vuelve
+   a escala 1 venga de donde venga el zoom (foco, pellizco previo
+   o doble toque), y mientras se lee no hay margen para que se
+   mueva. Al cerrar el lector se restaura el meta original y el
+   resto de la página conserva su comportamiento normal. */
+let epubViewportSaved = null;
+function epubViewportLock() {
+  const meta = document.querySelector('meta[name="viewport"]');
+  if (!meta) return;
+  if (epubViewportSaved === null) epubViewportSaved = meta.getAttribute("content") || "";
+  meta.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover");
+}
+function epubViewportUnlock() {
+  const meta = document.querySelector('meta[name="viewport"]');
+  if (!meta || epubViewportSaved === null) return;
+  meta.setAttribute("content", epubViewportSaved);
+  epubViewportSaved = null;
+}
+
 function epubZoomGuard() {
   if (window.__mgZoomGuard) return;
   window.__mgZoomGuard = true;
@@ -5154,6 +5205,7 @@ function destroyEpubReader() {
   epubInitSeq++;
   epubDictSeq++;
   epubOpen = false;
+  epubViewportUnlock();
   epubLastPct = -1;
   epubSel = null;
   epubGesture = null;
