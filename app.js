@@ -2158,7 +2158,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r68";
+const EPUB_BUILD = "r69";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -3204,7 +3204,14 @@ function epubThemeCssText(t) {
        el sistema nunca puede crear su selección ni su lupa: la
        única selección es la nuestra (marca propia por rango). */
     "html, body, body * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }" +
-    "::selection { background: transparent !important; }";
+    "::selection { background: transparent !important; }" +
+    /* Normalización de contenido ancho (r69): epub.js ya acota
+       las <img> en píxeles al marco de la página, pero los <svg>
+       (portadas SVG con ancho fijo), los <video> y las tablas
+       anchas quedaban fuera de ese tope y podían desbordar la
+       columna. Con el tope al 100 % ningún contenido de un libro
+       — subido o de Gutenberg — puede descuadrar la página. */
+    "svg, video, table { max-width: 100% !important; }";
 }
 
 function epubApplyThemeToDoc(contents) {
@@ -3770,7 +3777,29 @@ function epubAttachSheet() {
     const t = e.touches[0];
     epubSheetStart(t.clientX, t.clientY);
   }, { passive: true });
+  /* Candado de zoom (r69): un segundo dedo sobre la lámina es un
+     pellizco en curso, no un gesto del lector. Hasta la r68 los
+     manejadores lo ignoraban sin cancelarlo y Safari se quedaba
+     el gesto: aplicaba SU zoom a toda la página — la vista entera,
+     barra del lector incluida, se veía corrida a la derecha y
+     cortada (reporte de Sergio con la Biblia bilingüe, 10-nov).
+     Aquí el gesto multitáctil se cancela en seco y el gesto de
+     un dedo en curso se deshace, para que el pellizco nunca
+     arranque. */
+  el.addEventListener("touchstart", (e) => {
+    if (!epubOpen || !e.touches || e.touches.length < 2) return;
+    if (e.cancelable) e.preventDefault();
+    epubSheetCancelGesture();
+  }, { passive: false });
+  el.addEventListener("gesturestart", (e) => {
+    if (epubOpen && e.cancelable) e.preventDefault();
+  }, { passive: false });
   el.addEventListener("touchmove", (e) => {
+    if (e.touches && e.touches.length > 1) {
+      if (e.cancelable) e.preventDefault();
+      epubSheetCancelGesture();
+      return;
+    }
     const g = epubSheetGesture;
     if (!g) return;
     const t = e.touches && e.touches[0];
@@ -3815,6 +3844,26 @@ function epubAttachGestures(contents) {
   if (contents.__mgGestHook) return;
   contents.__mgGestHook = true;
   const doc = contents.document;
+  /* Candado de zoom (r69), la misma regla que en la lámina del
+     padre: con la lámina retirada (modo selección) los toques
+     llegan a este documento, y un pellizco no debe acabar en el
+     zoom de Safari sobre toda la página. El multitáctil se
+     cancela y el gesto de página en curso se deshace. */
+  doc.addEventListener("touchstart", (e) => {
+    if (!epubOpen || !e.touches || e.touches.length < 2) return;
+    if (e.cancelable) e.preventDefault();
+    epubGesture = null;
+    epubFoldCancel();
+  }, { passive: false });
+  doc.addEventListener("touchmove", (e) => {
+    if (!e.touches || e.touches.length < 2) return;
+    if (e.cancelable) e.preventDefault();
+    epubGesture = null;
+    epubFoldCancel();
+  }, { passive: false });
+  doc.addEventListener("gesturestart", (e) => {
+    if (epubOpen && e.cancelable) e.preventDefault();
+  }, { passive: false });
   doc.addEventListener("touchstart", (e) => {
     /* Con la lámina retirada (modo selección, r15) los toques del
        iframe son SOLO para ajustar la selección nativa: estos
@@ -5006,6 +5055,33 @@ function epubTeardownBook() {
   if (viewer) viewer.innerHTML = "";
 }
 
+/* Candado de zoom del lector (r69): mientras un libro está
+   abierto, el gesto de pellizco de Safari (gesturestart) y
+   cualquier arranque multitáctil sobre la cáscara se cancelan
+   en el documento padre. Es la tercera capa del candado — las
+   otras dos viven en la lámina de gestos y en cada documento
+   del ePub — y cubre las barras del lector, que quedan fuera
+   de la lámina. Sin esto, un pellizco sobre la portada dejaba
+   la página entera con el zoom de Safari aplicado: todo se
+   veía más grande, corrido a la derecha y cortado por el borde
+   (así lo reportó Sergio con la Biblia bilingüe). Fuera del
+   lector no se toca nada: el resto de la página sigue igual. */
+function epubZoomGuard() {
+  if (window.__mgZoomGuard) return;
+  window.__mgZoomGuard = true;
+  document.addEventListener("gesturestart", (e) => {
+    if (epubOpen && e.cancelable) e.preventDefault();
+  }, { passive: false });
+  document.addEventListener("gesturechange", (e) => {
+    if (epubOpen && e.cancelable) e.preventDefault();
+  }, { passive: false });
+  document.addEventListener("touchstart", (e) => {
+    if (!epubOpen || !e.touches || e.touches.length < 2) return;
+    const shell = document.getElementById("epub-shell");
+    if (shell && e.target && shell.contains(e.target) && e.cancelable) e.preventDefault();
+  }, { passive: false, capture: true });
+}
+
 async function epubOpenBook(seq, minimal) {
   epubMinimal = !!minimal;
   epubRestoreSettings();
@@ -5050,6 +5126,7 @@ async function epubOpenBook(seq, minimal) {
   /* Las marcas se reaplican con su propio blindaje; jamás tumban
      la apertura, y en el modo mínimo ni se intentan. */
   if (!minimal) { try { epubApplyAnnotations(); } catch { /* sin marcas en esta apertura */ } }
+  epubZoomGuard();
   epubAttachSheet();
   epubWsAttach();
   epubAttachStageTap();
