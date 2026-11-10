@@ -2518,8 +2518,9 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r73";
+const EPUB_BUILD = "r74";
 const EPUB_POS_KEY = "magister-epub-pos";
+const EPUB_RETURN_KEY = "magister-epub-vuelta";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
 const EPUB_UL_KEY = "magister-epub-underlines-v1";
@@ -3391,7 +3392,11 @@ function epubHtml() {
     </div>
     <div class="epub-bottom">
       <div class="epub-progress">
-        <div class="progress" role="progressbar" aria-label="${T("Progreso del libro")}"><div id="epub-prog-fill" style="width:0%"></div></div>
+        <div class="progress" id="epub-prog-track" role="progressbar" aria-label="${T("Progreso del libro")}"><div id="epub-prog-fill" style="width:0%"></div></div>
+        <div id="epub-return-anchor" hidden>
+          <div id="epub-return-thumb" role="button" aria-label="${T("Volver a la página marcada")}"><div class="mg-thumb-scale"><iframe tabindex="-1"></iframe></div></div>
+          <div id="epub-return-dot" role="button" aria-label="${T("Volver a la página marcada")}"></div>
+        </div>
         <p class="epub-prog-txt" id="epub-prog-txt">…</p>
       </div>
       <span class="epub-build" id="epub-build" aria-hidden="true">${EPUB_BUILD}</span>
@@ -4369,7 +4374,7 @@ function epubCurlPoolSchedule() {
   setTimeout(() => { epubCurlPoolBuild().catch(() => {}); }, 90);
 }
 
-window.addEventListener("resize", () => { if (epubOpen) { epubCurlLayerSync(); epubCurlPoolSchedule(); } });
+window.addEventListener("resize", () => { if (epubOpen) { epubCurlLayerSync(); epubCurlPoolSchedule(); epubReturnRender(); } });
 
 async function epubCurlPoolBuild() {
   if (!epubOpen || !epubRendition) return;
@@ -4378,7 +4383,7 @@ async function epubCurlPoolBuild() {
      el retorno seco dejaba el pool con los clones de la
      página anterior sin fecha de caducidad, y el siguiente
      pase montaba la hoja sobre esa página. */
-  if (epubCurl || epubCurlBusy) {
+  if (epubCurl || epubCurlBusy || epubScrub) {
     setTimeout(() => { epubCurlPoolBuild().catch(() => {}); }, 350);
     return;
   }
@@ -5633,6 +5638,12 @@ async function epubOpenBook(seq, minimal) {
   /* Las marcas se reaplican con su propio blindaje; jamás tumban
      la apertura, y en el modo mínimo ni se intentan. */
   if (!minimal) { try { epubApplyAnnotations(); } catch { /* sin marcas en esta apertura */ } }
+  /* r74: la barra de progreso se vuelve arrastrable en cualquier
+     apertura, y el punto de vuelta guardado de este libro vuelve
+     a la barra (solo en la apertura completa: el modo mínimo es
+     el rescate desnudo de siempre). */
+  try { epubScrubAttach(); } catch { /* la barra sigue siendo informativa */ }
+  if (!minimal) { try { epubReturnRestore(); } catch { /* sin punto de vuelta en esta apertura */ } }
   epubZoomGuard();
   epubAttachSheet();
   epubWsAttach();
@@ -5646,7 +5657,7 @@ async function epubOpenBook(seq, minimal) {
     .catch(() => {});
   epubBook.ready
     .then(() => { if (seq === epubInitSeq && epubBook) return epubBook.locations.generate(1200); })
-    .then(() => { if (seq === epubInitSeq) epubUpdateProgress(); })
+    .then(() => { if (seq === epubInitSeq) { epubUpdateProgress(); epubReturnSyncPct(); } })
     .catch(() => {});
 }
 
@@ -5669,6 +5680,9 @@ function destroyEpubReader() {
   if (epubCurl && epubCurl.raf) { try { cancelAnimationFrame(epubCurl.raf); } catch { /* sin rAF */ } }
   epubCurl = null;
   epubCurlBusy = false;
+  epubScrub = null;
+  epubScrubPending = null;
+  epubReturn = null;
   epubPoolData = null;
   epubPoolToken++;
   epubR2Destroy();
@@ -5696,6 +5710,10 @@ function epubOnRelocated(loc) {
 }
 
 function epubUpdateProgress() {
+  /* r74: durante un arrastre, la barra y su texto los pinta el
+     propio arrastre (siguen al dedo, por delante del asentamiento
+     de cada salto); el progreso canónico se repinta al soltar. */
+  if (epubScrub) return;
   try {
     const fill = document.getElementById("epub-prog-fill");
     const txt = document.getElementById("epub-prog-txt");
@@ -5719,6 +5737,341 @@ function epubUpdateProgress() {
       txt.textContent = T("Calculando el progreso…");
     }
   } catch { /* el progreso es informativo; nunca rompe la lectura */ }
+}
+
+/* r74 — barra de progreso arrastrable EN VIVO y punto de vuelta
+   marcado en la propia barra (pedido de Sergio, 10-nov: «Al mismo
+   tiempo que muevo la barra debe ir cambiando la página»; para
+   volver, NADA de botones: «en la barra se marque un círculo más
+   oscuro o de otro color que marque el punto donde estaba. Sobre
+   este punto va a aparecer una imagen de la página en pequeño. Al
+   presionar el punto o la imagen te traslada ahí. Se borra ese
+   punto de regreso hasta que se establezca otro. Y se guarda todo
+   eso por si el cliente vuelve a leer ese libro»).
+   Diseño:
+   - Al EMPEZAR un arrastre, el origen (la página en pantalla en
+     ese momento) queda marcado en la barra con un círculo dorado
+     y, flotando sobre él, una miniatura de ESA página (la foto
+     del pool de clones: el documento de la sección serializado
+     con su geometría — se reconoce su texto y su aspecto).
+   - Durante el arrastre, la página visible SIGUE a la barra en
+     tiempo real: los saltos van por las localizaciones del libro
+     con coalescencia «el último destino manda» (como mucho un
+     display en vuelo y uno pendiente), para que se vea la página
+     moverse con el dedo y no una serie de saltos al final. Al
+     levantar el dedo, el libro queda donde la barra lo dejó.
+   - Tocar el círculo o la miniatura devuelve a la página de
+     origen EXACTA y el punto se borra (círculo y miniatura
+     desaparecen). Un arrastre nuevo lo sustituye por su origen.
+   - El punto se guarda POR LIBRO en el aparato (misma casa que
+     la posición y las marcas): si el lector cierra el libro y
+     vuelve otro día, el punto sigue en la barra con su
+     miniatura. Si el EPUB cambió y su CFI ya no resuelve, se
+     descarta en silencio al abrir (misma caída con gracia de la
+     r73, vía epubCfiResuelve).
+   - Un roce (desplazamiento total menor del 0,2 % del libro) no
+     cuenta como arrastre: al soltar se restaura el marcador
+     anterior (o ninguno) y el libro vuelve a donde estaba. */
+let epubScrub = null;
+let epubScrubPending = null;
+let epubReturn = null;
+
+function epubReturnKey() { return EPUB_RETURN_KEY + "-" + (epubCurrent ? epubCurrent.gid : "sinlibro"); }
+
+/* Foto de la página en pantalla, con la receta del pool de
+   clones (epubCurlPoolBuild): el documento vivo de la sección,
+   su marco y el desplazamiento que lo alinea con el escenario. */
+function epubReturnSnapshot() {
+  try {
+    if (!epubRendition) return null;
+    const contents = epubRendition.getContents() || [];
+    const c = contents[0];
+    const stage = epubStageEl();
+    if (!c || !c.document || !stage) return null;
+    const frame = c.window && c.window.frameElement;
+    if (!frame) return null;
+    const sRect = stage.getBoundingClientRect();
+    const fRect = frame.getBoundingClientRect();
+    return {
+      html: "<!DOCTYPE html>\n" + c.document.documentElement.outerHTML,
+      frameW: frame.offsetWidth, frameH: frame.offsetHeight,
+      offX: Math.round(fRect.left - sRect.left),
+      stageW: stage.clientWidth, stageH: stage.clientHeight,
+    };
+  } catch { return null; }
+}
+
+function epubReturnPersist() {
+  try {
+    if (!epubReturn) { epubStoreRemove(epubReturnKey()); return; }
+    const data = JSON.stringify({ cfi: epubReturn.cfi, pct: epubReturn.pct, snap: epubReturn.snap || null });
+    try { window.localStorage.setItem(epubReturnKey(), data); }
+    catch { /* cuota: se guarda el punto sin la foto */
+      window.localStorage.setItem(epubReturnKey(), JSON.stringify({ cfi: epubReturn.cfi, pct: epubReturn.pct, snap: null }));
+    }
+  } catch { /* sin almacenamiento: el punto vive solo en la sesión */ }
+}
+
+function epubReturnSet(r) {
+  epubReturn = r;
+  epubReturnPersist();
+  epubReturnRender();
+}
+
+function epubReturnClear() {
+  epubReturn = null;
+  try { epubStoreRemove(epubReturnKey()); } catch { /* sin almacenamiento */ }
+  epubReturnRender();
+}
+
+function epubReturnRender() {
+  const anchor = document.getElementById("epub-return-anchor");
+  if (!anchor) return;
+  if (!epubReturn || !epubOpen) { anchor.hidden = true; return; }
+  anchor.hidden = false;
+  anchor.style.left = (epubReturn.pct * 100) + "%";
+  const thumb = document.getElementById("epub-return-thumb");
+  const snap = epubReturn.snap;
+  if (thumb) {
+    if (!snap || !snap.html) { thumb.hidden = true; }
+    else {
+      thumb.hidden = false;
+      const W = 64;
+      const k = W / Math.max(1, snap.stageW);
+      thumb.style.width = W + "px";
+      thumb.style.height = Math.max(24, Math.round(snap.stageH * k)) + "px";
+      const scale = thumb.querySelector(".mg-thumb-scale");
+      if (scale) {
+        scale.style.width = snap.stageW + "px";
+        scale.style.height = snap.stageH + "px";
+        scale.style.transform = "scale(" + k + ")";
+      }
+      const f = thumb.querySelector("iframe");
+      if (f) {
+        f.style.width = snap.frameW + "px";
+        f.style.height = snap.frameH + "px";
+        f.style.transform = "translateX(" + snap.offX + "px)";
+        if (f.__mgHtml !== snap.html) { f.__mgHtml = snap.html; f.srcdoc = snap.html; }
+      }
+      /* Que la miniatura no se salga por los bordes de la barra. */
+      const track = document.getElementById("epub-prog-track");
+      if (track) {
+        const tw = track.getBoundingClientRect().width || 0;
+        if (tw > 0) {
+          const centro = epubReturn.pct * tw;
+          let shift = 0;
+          if (centro < 36) shift = 36 - centro;
+          else if (centro > tw - 36) shift = (tw - 36) - centro;
+          thumb.style.transform = "translateX(calc(-50% + " + Math.round(shift) + "px))";
+        }
+      }
+    }
+  }
+}
+
+/* Al abrir el libro: si hay un punto de vuelta guardado y su CFI
+   sigue resolviendo en ESTE ejemplar, el marcador vuelve a la
+   barra con su miniatura; si el libro cambió por debajo y ya no
+   resuelve, se descarta en silencio (r73). */
+async function epubReturnRestore() {
+  epubReturn = null;
+  epubReturnRender();
+  const gid = epubCurrent ? epubCurrent.gid : null;
+  let raw = null;
+  try { raw = window.localStorage.getItem(epubReturnKey()); } catch { raw = null; }
+  if (!raw) return;
+  let data = null;
+  try { data = JSON.parse(raw); } catch { data = null; }
+  if (!data || !epubIsCfi(data.cfi || "")) { epubReturnClear(); return; }
+  const ok = await epubCfiResuelve(data.cfi);
+  /* Si entretanto se cerró este libro (u se abrió otro), nada de
+     lo decidido aquí toca al estado actual. */
+  if (!epubOpen || !epubCurrent || epubCurrent.gid !== gid) return;
+  if (!ok) { epubReturnClear(); return; }
+  if (!epubReturn) {
+    epubReturn = {
+      cfi: data.cfi,
+      pct: (typeof data.pct === "number" && isFinite(data.pct)) ? data.pct : 0,
+      snap: data.snap || null,
+    };
+    epubReturnRender();
+  }
+}
+
+/* Cuando las localizaciones por fin existen, el % del marcador
+   se recalcula desde su CFI (el guardado pudo nacer con otro
+   tamaño de letra). */
+function epubReturnSyncPct() {
+  if (!epubReturn || !epubBook || !epubBook.locations) return;
+  try {
+    const p = epubBook.locations.percentageFromCfi(epubReturn.cfi);
+    if (typeof p === "number" && isFinite(p) && p >= 0 && Math.abs(p - epubReturn.pct) > 0.001) {
+      epubReturn.pct = p;
+      epubReturnPersist();
+      epubReturnRender();
+    }
+  } catch { /* el % guardado vale mientras tanto */ }
+}
+
+async function epubReturnGo() {
+  const R = epubReturn;
+  if (!R || !epubRendition) return;
+  try { await epubDisplayBounded(R.cfi); }
+  catch { try { await epubDisplayBounded(undefined); } catch { /* el vigilante de la apertura no aplica a saltos sueltos */ } }
+  epubReturnClear();
+  epubUpdateProgress();
+  epubCurlPoolSchedule();
+}
+
+function epubScrubLocReady() {
+  return !!(epubOpen && epubBook && epubRendition && epubBook.locations && (epubBook.locations.total || 0) > 0);
+}
+
+function epubScrubFrac(clientX) {
+  const track = document.getElementById("epub-prog-track");
+  if (!track) return 0;
+  const r = track.getBoundingClientRect();
+  if (r.width <= 0) return 0;
+  return Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+}
+
+function epubScrubPaint(frac) {
+  const fill = document.getElementById("epub-prog-fill");
+  const txt = document.getElementById("epub-prog-txt");
+  if (fill) fill.style.width = (frac * 100) + "%";
+  if (txt) txt.textContent = Math.round(frac * 100) + " %";
+}
+
+function epubScrubTo(frac) {
+  const S = epubScrub;
+  if (!S) return;
+  S.pending = frac;
+  epubScrubDrain();
+}
+
+async function epubScrubDrain() {
+  const S = epubScrub;
+  if (!S || S.draining) return;
+  S.draining = true;
+  try {
+    while (epubScrub === S && S.pending != null) {
+      const f = S.pending;
+      S.pending = null;
+      S.shown = f;
+      try { await epubRendition.display(epubBook.locations.cfiFromPercentage(f)); }
+      catch { /* un salto fallido no tumba el arrastre: manda el siguiente */ }
+    }
+  } finally { S.draining = false; }
+}
+
+function epubScrubBegin(id, origin) {
+  const track = document.getElementById("epub-prog-track");
+  if (track) { try { track.setPointerCapture(id); } catch { /* sin captura: los eventos siguen llegando */ } }
+  epubScrub = {
+    id,
+    origin,
+    previo: epubReturn,
+    frac: origin.pct, pending: null, shown: null,
+    draining: false, moved: false, ending: false,
+  };
+  /* El punto de vuelta nace al EMPEZAR el arrastre, con la foto
+     de la página que se está viendo. */
+  epubReturnSet({ cfi: origin.cfi, pct: origin.pct, snap: epubReturnSnapshot() });
+  epubScrubPaint(origin.pct);
+  epubPoke();
+}
+
+function epubScrubDown(e) {
+  if (!epubScrubLocReady()) return;
+  if (epubScrub || epubScrubPending) return;
+  let cfi = null, pct = 0;
+  try {
+    const loc = epubRendition.currentLocation();
+    if (loc && loc.start && loc.start.cfi) { cfi = loc.start.cfi; pct = epubBook.locations.percentageFromCfi(cfi) || 0; }
+  } catch { /* se intenta con la posición guardada */ }
+  if (!cfi) {
+    try {
+      cfi = window.localStorage.getItem(epubPosKey());
+      if (cfi) pct = epubBook.locations.percentageFromCfi(cfi) || 0;
+    } catch { cfi = null; }
+  }
+  if (!cfi || !epubIsCfi(cfi)) return;
+  e.preventDefault();
+  /* Si un pase de página se está asentando en este mismo
+     instante, la pulsación no se pierde: el arrastre se promueve
+     en cuanto el pase acaba (el dedo sigue puesto) — ver
+     epubScrubMove. Si el dedo se levanta antes, no pasó nada. */
+  if (epubCurl || epubCurlBusy) {
+    epubScrubPending = { id: e.pointerId, origin: { cfi, pct } };
+    return;
+  }
+  epubScrubBegin(e.pointerId, { cfi, pct });
+}
+
+function epubScrubMove(e) {
+  /* Promoción de una pulsación que llegó con un pase asentándose:
+     en cuanto el pase acaba y el dedo se mueve, el arrastre nace
+     con el origen capturado al pulsar. */
+  if (!epubScrub && epubScrubPending && e.pointerId === epubScrubPending.id && !epubCurl && !epubCurlBusy) {
+    const P = epubScrubPending;
+    epubScrubPending = null;
+    epubScrubBegin(P.id, P.origin);
+  }
+  const S = epubScrub;
+  if (!S || S.ending || e.pointerId !== S.id) return;
+  const frac = epubScrubFrac(e.clientX);
+  S.frac = frac;
+  if (Math.abs(frac - S.origin.pct) > 0.002) S.moved = true;
+  epubScrubPaint(frac);
+  epubScrubTo(frac);
+  epubPoke();
+}
+
+function epubScrubUp(e) {
+  if (!epubScrub && epubScrubPending && e.pointerId === epubScrubPending.id) { epubScrubPending = null; return; }
+  const S = epubScrub;
+  if (!S || S.ending || e.pointerId !== S.id) return;
+  S.ending = true;
+  const frac = epubScrubFrac(e.clientX);
+  if (Math.abs(frac - S.origin.pct) > 0.002) S.moved = true;
+  S.frac = frac;
+  epubScrubPaint(frac);
+  epubScrubTo(frac);
+  (async () => {
+    let espera = 0;
+    while (epubScrub === S && (S.draining || S.pending != null) && espera < 5000) {
+      await new Promise((r) => setTimeout(r, 80));
+      espera += 80;
+    }
+    if (epubScrub !== S) return;
+    epubScrub = null;
+    if (!S.moved) {
+      /* Roce: ni el marcador ni el libro se quedan movidos. */
+      if (S.shown != null && Math.abs(S.shown - S.origin.pct) > 0.002) {
+        try { await epubDisplayBounded(S.origin.cfi); } catch { /* el libro ya estaba ahí o cerca */ }
+      }
+      if (S.previo) epubReturnSet(S.previo); else epubReturnClear();
+    }
+    epubUpdateProgress();
+    epubCurlPoolSchedule();
+  })();
+}
+
+function epubScrubAttach() {
+  const track = document.getElementById("epub-prog-track");
+  if (track && !track.__mgScrub) {
+    track.__mgScrub = true;
+    track.addEventListener("pointerdown", epubScrubDown);
+    track.addEventListener("pointermove", epubScrubMove);
+    track.addEventListener("pointerup", epubScrubUp);
+    track.addEventListener("pointercancel", epubScrubUp);
+  }
+  const anchor = document.getElementById("epub-return-anchor");
+  if (anchor && !anchor.__mgTap) {
+    anchor.__mgTap = true;
+    anchor.addEventListener("pointerdown", (e) => { e.stopPropagation(); e.preventDefault(); });
+    anchor.addEventListener("click", (e) => { e.stopPropagation(); epubReturnGo(); });
+  }
 }
 
 function epubFontStep(delta) {
