@@ -1272,6 +1272,14 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
   color: rgba(245,245,247,0.7);
 }
 
+/* Ficha de formas del latín (r66p13): las partes principales
+   arriba del cuadro de Significado — serif como el texto de
+   las acepciones, con cuerpo y peso de cabecera. */
+.epub-dict-formas {
+  margin: 2px 0 8px; font-family: Georgia, "Times New Roman", serif;
+  font-size: 17px; font-weight: 700; line-height: 1.4;
+}
+
 .epub-ws-trans-btn { margin-top: 8px; }
 
 /* «Traducir» es otra opción de la hoja: mismo azul oscuro #1e3a8a

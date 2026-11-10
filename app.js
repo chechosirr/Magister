@@ -122,6 +122,183 @@ const api = {
   getChapter: (tk, bookId, chapterIndex) => apiCall(`/books/${bookId}/chapters/${chapterIndex}`, { token: tk }),
 };
 
+/* ------------------------------------------------- catálogo completo
+   (r68) Las categorías se alimentan del catálogo real de
+   Gutenberg que sirve magister-catalogo (/magister/catalogo):
+   conteos por categoría e idioma, los libros del inicio de
+   cada categoría (los calcula el servidor y rotan a diario,
+   sin anunciarse en la página), lista completa paginada y
+   buscador. La página solo pide páginas de 30-40
+   libros: nada de archivos gigantes al teléfono.
+   Cada libro del catálogo se registra como un libro normal con
+   id propio (1.000.000 + gid) para que la tarjeta, el lector,
+   los recientes y el aviso de prueba funcionen igual que con
+   los 51 del escaparate. */
+const CAT_API = MAGISTER_API_BASE + "/catalogo";
+const CAT_SLUGS = {
+  "Filosofía": "filosofia", "Política": "politica",
+  "Economía": "economia", "Religión": "religion",
+  "Historia": "historia",
+  "Medicina y Anatomía": "medicina", "Novela": "novela",
+  "Poesía": "poesia", "Teatro": "teatro", "Cuentos": "cuentos",
+  "Clásicos universales": "clasicos",
+  "Libros en latín": "latin",
+};
+const CAT_NOMBRES = Object.fromEntries(
+  Object.entries(CAT_SLUGS).map(([n, s]) => [s, n]));
+const CAT_LANGS = ["es", "en", "fr", "de", "it", "pt", "ca"];
+
+function catalogLang() {
+  const l = (user && user.idioma) || "es";
+  return CAT_LANGS.includes(l) ? l : "es";
+}
+
+function catalogBook(arr, slug) {
+  const gid = arr[0];
+  const id = 1000000 + gid;
+  let b = BOOK_BY_ID.get(id);
+  if (!b) {
+    b = {
+      id, gid,
+      title: arr[1], author: arr[2],
+      category: CAT_NOMBRES[slug] || "Clásicos universales",
+      hasContent: arr[3] === 1, epub: arr[3] === 1,
+      coverUrl: null, catalogo: true,
+    };
+    BOOKS.push(b);
+    BOOK_BY_ID.set(id, b);
+  }
+  return b;
+}
+
+async function catFetch(path) {
+  const r = await fetch(CAT_API + path);
+  if (!r.ok) throw new Error("El catálogo no responde (" + r.status + ").");
+  return r.json();
+}
+
+let catManifest = null;
+let catManifestBusy = false;
+function ensureCatManifest() {
+  if (catManifest || catManifestBusy) return;
+  catManifestBusy = true;
+  catFetch("/manifest").then((m) => {
+    catManifest = m; catManifestBusy = false;
+    if (view.name === "categories") render();
+  }).catch(() => { catManifestBusy = false; });
+}
+
+let catSelHoy = null;
+let catSelHoyBusy = false;
+function ensureCatSelHoy() {
+  const lang = catalogLang();
+  if (catSelHoyBusy || (catSelHoy && catSelHoy.idioma === lang)) return;
+  catSelHoyBusy = true;
+  catFetch("/destacados-todas?idioma=" + lang + "&n=12").then((d) => {
+    catSelHoy = { fecha: d.fecha, idioma: lang, sel: d.seleccion || {} };
+    catSelHoyBusy = false;
+    if (view.name === "categories" && !view.category) render();
+  }).catch(() => { catSelHoyBusy = false; });
+}
+
+/* Estado de la vista de UNA categoría: destacados del día +
+   lista completa paginada + filtro propio de la categoría. */
+let catDetail = null;
+function catEnsureDetail(nombre) {
+  const slug = CAT_SLUGS[nombre];
+  if (!slug) return;
+  const lang = catalogLang();
+  if (catDetail && catDetail.slug === slug && catDetail.idioma === lang) return;
+  catDetail = {
+    slug, nombre, idioma: lang, destacados: null, total: 0, enB2: 0,
+    pagina: 0, paginas: 0, books: [], busy: false, error: "",
+    filtro: "", filtroBooks: null, filtroTotal: 0,
+    filtroPagina: 0, filtroPaginas: 0,
+  };
+  const d = catDetail;
+  catFetch("/destacados?cat=" + slug + "&idioma=" + lang + "&n=24")
+    .then((r) => {
+      if (catDetail !== d) return;
+      d.destacados = (r.books || []).map((a) => catalogBook(a, slug));
+      d.enB2 = r.enB2 || 0;
+      if (view.name === "categories" && view.category === nombre) render();
+    })
+    .catch(() => {
+      if (catDetail !== d) return;
+      d.destacados = [];
+      d.error = "Algunos libros de esta categoría no se pudieron cargar.";
+      if (view.name === "categories" && view.category === nombre) render();
+    });
+  catDetailPage();
+}
+
+function catDetailPage() {
+  const d = catDetail;
+  if (!d || d.busy) return;
+  if (d.filtro) {
+    if (d.filtroPaginas && d.filtroPagina >= d.filtroPaginas) return;
+    d.busy = true;
+    const next = d.filtroPagina + 1;
+    catFetch("/buscar?q=" + encodeURIComponent(d.filtro) +
+             "&idioma=" + d.idioma + "&cat=" + d.slug +
+             "&pagina=" + next + "&por=40")
+      .then((r) => {
+        if (catDetail !== d) return;
+        d.busy = false;
+        d.filtroPagina = r.pagina; d.filtroPaginas = r.paginas;
+        d.filtroTotal = r.total;
+        const nuevos = (r.books || []).map((b) =>
+          catalogBook([b.gid, b.titulo, b.autor, b.enB2], b.cat));
+        d.filtroBooks = (d.filtroBooks || []).concat(nuevos);
+        if (view.name === "categories" && view.category === d.nombre) render();
+      })
+      .catch(() => { if (catDetail === d) { d.busy = false; } });
+    return;
+  }
+  if (d.paginas && d.pagina >= d.paginas) return;
+  d.busy = true;
+  const next = d.pagina + 1;
+  catFetch("/libros?cat=" + d.slug + "&idioma=" + d.idioma +
+           "&pagina=" + next + "&por=40")
+    .then((r) => {
+      if (catDetail !== d) return;
+      d.busy = false;
+      d.pagina = r.pagina; d.paginas = r.paginas;
+      d.total = r.total; d.enB2 = r.enB2;
+      const nuevos = (r.books || []).map((a) => catalogBook(a, d.slug));
+      d.books = d.books.concat(nuevos);
+      if (view.name === "categories" && view.category === d.nombre) render();
+    })
+    .catch(() => {
+      if (catDetail !== d) return;
+      d.busy = false;
+      if (!d.books.length) d.error = "La lista de la categoría no se pudo cargar.";
+      if (view.name === "categories" && view.category === d.nombre) render();
+    });
+}
+
+/* Buscador global contra el catálogo completo (vista «Buscar»):
+   complementa los resultados del escaparate. */
+let catSearch = null;
+let catSearchBusy = false;
+function ensureCatSearch(q) {
+  const lang = catalogLang();
+  if (catSearchBusy) return;
+  if (catSearch && catSearch.q === q && catSearch.idioma === lang) return;
+  catSearchBusy = true;
+  catSearch = { q, idioma: lang, books: null, total: 0 };
+  catFetch("/buscar?q=" + encodeURIComponent(q) + "&por=30")
+    .then((r) => {
+      catSearchBusy = false;
+      if (!catSearch || catSearch.q !== q) return;
+      catSearch.total = r.total;
+      catSearch.books = (r.books || []).map((b) =>
+        catalogBook([b.gid, b.titulo, b.autor, b.enB2], b.cat));
+      if (view.name === "search" && (view.query || "") === q) render();
+    })
+    .catch(() => { catSearchBusy = false; });
+}
+
 /* ------------------------------------------------------------ estado */
 
 let token = loadToken();
@@ -206,11 +383,18 @@ function coverHtml(book, large = false) {
 }
 
 function bookCardHtml(book) {
-  return `<button type="button" class="book-card" data-action="open-book" data-id="${book.id}" aria-label="Ver ${esc(book.title)} de ${esc(book.author)}">
+  const inner = `
     <span class="cover-box">${coverHtml(book)}</span>
     <p class="bt">${esc(book.title)}</p>
     <p class="ba">${esc(book.author)}</p>
-    ${book.hasContent ? "" : `<p class="soon">Próximamente</p>`}
+    ${book.hasContent ? "" : `<p class="soon">Próximamente</p>`}`;
+  /* Libro del catálogo que aún no está en la bodega: se muestra
+     pero no se abre (el lector respondería que no está). */
+  if (book.catalogo && !book.epub) {
+    return `<div class="book-card" aria-label="${esc(book.title)} de ${esc(book.author)} (aún no está en la bodega)">${inner}
+  </div>`;
+  }
+  return `<button type="button" class="book-card" data-action="open-book" data-id="${book.id}" aria-label="Ver ${esc(book.title)} de ${esc(book.author)}">${inner}
   </button>`;
 }
 
@@ -330,16 +514,36 @@ function libraryHtml() {
 function categoriesHtml() {
   const active = view.category;
   if (!active) {
+    ensureCatManifest();
+    ensureCatSelHoy();
+    const lang = catalogLang();
     const byCat = new Map(CATEGORIES.map((c) => [c, []]));
     for (const b of visibleBooks()) if (byCat.has(b.category)) byCat.get(b.category).push(b);
     return `<div class="view-pad">
       <h1 class="view-title center">Categorías</h1>
       <div>${CATEGORIES.map((name) => {
-        const list = byCat.get(name) || [];
+        const slug = CAT_SLUGS[name];
+        const escaparate = byCat.get(name) || [];
+        /* La fila de cada categoría muestra los libros del
+           inicio del catálogo real (rotan a diario en el
+           servidor, sin anunciarse); hasta que llegan, o si
+           ese idioma no tiene, se muestra la fila del
+           escaparate de siempre. */
+        let list = escaparate;
+        let esSeleccion = false;
+        if (catSelHoy && slug && Array.isArray(catSelHoy.sel[slug]) && catSelHoy.sel[slug].length) {
+          list = catSelHoy.sel[slug].map((a) => catalogBook(a, slug));
+          esSeleccion = true;
+        }
+        let total = list.length;
+        if (catManifest && slug && catManifest.categorias[slug]) {
+          const por = catManifest.categorias[slug].porIdioma[lang];
+          if (por) total = por.total;
+        }
         return `<section class="cat-block" aria-label="Categoría ${esc(name)}">
           <div class="cat-section-head">
             <h2>${esc(name)}</h2>
-            <button type="button" data-action="select-category" data-cat="${esc(name)}">Ver todo (${list.length}) ›</button>
+            <button type="button" data-action="select-category" data-cat="${esc(name)}">Ver todo (${total}) ›</button>
           </div>
           ${list.length === 0
             ? `<p class="small dim mt-2">Aún no hay libros del catálogo en esta categoría.</p>`
@@ -348,13 +552,50 @@ function categoriesHtml() {
       }).join("")}</div>
     </div>`;
   }
-  const shown = visibleBooks().filter((b) => b.category === active);
+  /* Vista de UNA categoría: los libros del inicio arriba (sin
+     rótulo) y debajo la lista completa del catálogo en el
+     idioma de la cuenta, por páginas (botón «Cargar más»),
+     con su filtro propio. */
+  catEnsureDetail(active);
+  const d = catDetail;
+  if (!d || d.nombre !== active) {
+    return `<div class="view-pad">
+    <h1 class="view-title center">Categorías</h1>
+    <h2 class="font-display" style="margin:12px 0 0;font-size:20px;font-weight:700">${esc(active)}</h2>
+    <p class="small dim mt-4">Cargando el catálogo…</p>
+  </div>`;
+  }
+  const enFiltro = !!d.filtro;
+  const lista = enFiltro ? (d.filtroBooks || []) : d.books;
+  const hayMas = enFiltro ? d.filtroPagina < d.filtroPaginas : d.pagina < d.paginas;
+  const conteo = d.total
+    ? (d.slug === "latin"
+      ? `<p class="small dim mt-1">${d.total} ${d.total === 1 ? "libro" : "libros"} · ${d.enB2} ya en la bodega</p>`
+      : `<p class="small dim mt-1">${d.total} ${d.total === 1 ? "libro" : "libros"} en tu idioma · ${d.enB2} ya en la bodega</p>`)
+    : "";
   return `<div class="view-pad">
     <h1 class="view-title center">Categorías</h1>
     <h2 class="font-display" style="margin:12px 0 0;font-size:20px;font-weight:700">${esc(active)}</h2>
-    ${shown.length === 0
-      ? `<p class="small dim mt-4">Aún no hay libros del catálogo en esta categoría.</p>`
-      : `<div class="grid-books mt-4">${shown.map((book) => bookCardHtml(book)).join("")}</div>`}
+    ${conteo}
+    ${d.destacados === null
+      ? `<p class="small dim" style="margin-top:22px">Cargando…</p>`
+      : d.destacados.length === 0
+        ? `<p class="small dim" style="margin-top:22px">Aún no hay libros en tu idioma para mostrar en esta categoría.</p>`
+        : `<div class="grid-books" style="margin-top:22px">${d.destacados.map((book) => bookCardHtml(book)).join("")}</div>`}
+    <form class="searchbox light" role="search" aria-label="Filtrar en ${esc(active)}" data-cat-filter-form style="margin-top:26px;max-width:448px">
+      ${SEARCH_ICON}
+      <input type="search" aria-label="Filtrar en ${esc(active)} por título o autor" placeholder="Filtra en esta categoría…" value="${esc(d.filtro)}">
+      <button type="submit">Filtrar</button>
+    </form>
+    ${enFiltro ? `<p class="small dim mt-3">${d.filtroTotal} ${d.filtroTotal === 1 ? "resultado" : "resultados"} para «${esc(d.filtro)}» en ${esc(active)} <button type="button" class="btn-ghost" data-action="cat-filter-clear" style="margin-left:8px">Quitar filtro</button></p>` : ""}
+    ${d.error && lista.length === 0 ? `<p class="small mt-4" role="alert">${esc(d.error)}</p>` : ""}
+    ${!enFiltro && d.pagina > 0 && d.total === 0
+      ? `<p class="small dim mt-4">Aún no hay libros de esta categoría en tu idioma.</p>`
+      : lista.length === 0
+        ? (enFiltro && d.busy ? `<p class="small dim mt-4">Buscando…</p>` : enFiltro ? `<p class="small dim mt-4">Sin resultados para ese filtro.</p>` : `<p class="small dim mt-4">Cargando la lista completa…</p>`)
+        : `<h3 class="font-display" style="margin:22px 0 0;font-size:16px;font-weight:700">${enFiltro ? "Resultados del filtro" : "Todos los libros"}</h3>
+           <div class="grid-books mt-3">${lista.map((book) => bookCardHtml(book)).join("")}</div>
+           ${hayMas ? `<div class="center" style="margin-top:20px"><button type="button" class="btn-primary pad" data-action="cat-more" ${d.busy ? "disabled" : ""}>${d.busy ? "Cargando…" : "Cargar más"}</button></div>` : ""}`}
   </div>`;
 }
 
@@ -364,14 +605,26 @@ function searchHtml() {
   if (query.trim() === "") {
     body = `<p class="small dim mt-6" style="margin-top:24px">Escribe el título de un libro o el nombre de un autor para buscar en todo el catálogo.</p>`;
   } else {
+    ensureCatSearch(query.trim());
     const results = visibleBooks().filter((b) => bookMatches(b, query));
-    body = `<p class="small dim" style="margin-top:24px">${results.length} ${results.length === 1 ? "resultado" : "resultados"} para «${esc(query)}»</p>` +
+    /* Resultados del catálogo completo (71.500 libros): llegan del
+       servicio y se pintan al volver la respuesta. */
+    let catalogoHtml = `<p class="small dim" style="margin-top:24px">Buscando en el catálogo completo…</p>`;
+    if (catSearch && catSearch.q === query.trim() && catSearch.books) {
+      catalogoHtml = `<h2 class="font-display" style="margin:28px 0 0;font-size:18px;font-weight:700">En el catálogo completo</h2>
+      <p class="small dim" style="margin-top:6px">${catSearch.total} ${catSearch.total === 1 ? "resultado" : "resultados"} para «${esc(query)}»</p>` +
+        (catSearch.books.length === 0
+          ? `<p class="small dim mt-3">Ningún libro del catálogo completo coincide con esa búsqueda.</p>`
+          : `<div class="grid-books mt-4">${catSearch.books.map((book) => bookCardHtml(book)).join("")}</div>` +
+            (catSearch.total > catSearch.books.length
+              ? `<p class="small dim mt-3">Se muestran los primeros ${catSearch.books.length}; afina la búsqueda o entra en su categoría para verlos todos.</p>`
+              : ""));
+    }
+    body = `<p class="small dim" style="margin-top:24px">${results.length} ${results.length === 1 ? "resultado" : "resultados"} en el escaparate para «${esc(query)}»</p>` +
       (results.length === 0
-        ? `<div class="card dashed mt-4">
-             <p class="small dim" style="margin:0">Ningún libro del catálogo coincide con esa búsqueda. Prueba con otra palabra del título o con el apellido del autor.</p>
-             <button type="button" class="btn-primary pad mt-3" data-action="goto-categories">Explorar categorías</button>
-           </div>`
-        : `<div class="grid-books mt-4">${results.map((book) => bookCardHtml(book)).join("")}</div>`);
+        ? ""
+        : `<div class="grid-books mt-4">${results.map((book) => bookCardHtml(book)).join("")}</div>`) +
+      catalogoHtml;
   }
   return `<div class="view-pad">
     <h1 class="view-title">Buscar libros</h1>
@@ -947,6 +1200,11 @@ function openBookDirect(bookId) {
    (si aún no estaba), para que el estante refleje lo leído. */
 function epubEnsureLibrary(bookId) {
   if (!token || !MAGISTER_API_ENABLED) return;
+  /* Los libros del catálogo completo no viven en la biblioteca
+     del servicio de cuentas (su «Tu biblioteca» es la del
+     escaparate): quedan en «Recientes» de este aparato. */
+  const bk = BOOK_BY_ID.get(bookId);
+  if (bk && bk.catalogo) return;
   if (libraryEntries.some((e) => e.book && e.book.id === bookId)) return;
   api.addToLibrary(token, bookId)
     .then(() => api.myLibrary(token))
@@ -966,8 +1224,16 @@ function recientesGet() {
   if (!Array.isArray(a)) return [];
   const out = [];
   for (const r of a) {
-    if (!r || typeof r !== "object" || !BOOK_BY_ID.has(r.id)) continue;
-    out.push({ id: r.id, gid: r.gid, title: String(r.title || ""), author: String(r.author || ""), ts: typeof r.ts === "number" ? r.ts : 0 });
+    if (!r || typeof r !== "object") continue;
+    /* Un libro del catálogo abierto antes de recargar la página se
+       vuelve a registrar desde su propio récord (id 1.000.000+gid)
+       para que «Recientes» no lo pierda. */
+    if (!BOOK_BY_ID.has(r.id) && typeof r.id === "number" && r.id >= 1000000 && r.gid) {
+      catalogBook([r.gid, String(r.title || ""), String(r.author || ""), 1],
+                  CAT_SLUGS[r.category] || "clasicos");
+    }
+    if (!BOOK_BY_ID.has(r.id)) continue;
+    out.push({ id: r.id, gid: r.gid, title: String(r.title || ""), author: String(r.author || ""), category: String(r.category || ""), ts: typeof r.ts === "number" ? r.ts : 0 });
     if (out.length >= 10) break;
   }
   return out;
@@ -975,7 +1241,7 @@ function recientesGet() {
 function recientesAdd(book) {
   try {
     const list = recientesGet().filter((r) => r.gid !== book.gid);
-    list.unshift({ id: book.id, gid: book.gid, title: book.title, author: book.author, ts: Date.now() });
+    list.unshift({ id: book.id, gid: book.gid, title: book.title, author: book.author, category: book.category || "", ts: Date.now() });
     window.localStorage.setItem(RECIENTES_KEY, JSON.stringify(list.slice(0, 10)));
   } catch { /* sin almacenamiento */ }
 }
@@ -1495,6 +1761,15 @@ document.addEventListener("click", async (e) => {
   else if (action === "select-category") go({ name: "categories", category: el.dataset.cat });
   else if (action === "back-categories") goBack();
   else if (action === "goto-categories") go({ name: "categories" });
+  else if (action === "cat-more") catDetailPage();
+  else if (action === "cat-filter-clear") {
+    if (catDetail) {
+      catDetail.filtro = ""; catDetail.filtroBooks = null;
+      catDetail.filtroTotal = 0; catDetail.filtroPagina = 0;
+      catDetail.filtroPaginas = 0;
+      render();
+    }
+  }
   else if (action === "open-chat") openChat("libro");
   else if (action === "open-help") { chatLobby = true; openChat("ayuda"); }
   /* «Olvidé mi contraseña» es OTRO enlace al chat (no el botón
@@ -1608,6 +1883,22 @@ document.addEventListener("submit", async (e) => {
     e.preventDefault();
     const input = form.querySelector("input[type=search]");
     go({ name: "search", query: (input.value || "").trim() });
+    return;
+  }
+  if (form.matches("[data-cat-filter-form]")) {
+    /* Filtro propio de la categoría abierta (r66p14): busca en el
+       catálogo solo dentro de esa categoría e idioma. */
+    e.preventDefault();
+    const input = form.querySelector("input[type=search]");
+    if (catDetail) {
+      catDetail.filtro = (input.value || "").trim();
+      catDetail.filtroBooks = null;
+      catDetail.filtroTotal = 0;
+      catDetail.filtroPagina = 0;
+      catDetail.filtroPaginas = 0;
+      if (catDetail.filtro) catDetailPage();
+      render();
+    }
     return;
   }
   if (form.id === "auth-form") {
@@ -1867,7 +2158,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r67";
+const EPUB_BUILD = "r68";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -2690,8 +2981,9 @@ function epubHtml() {
         <div class="epub-ws-scroll" id="epub-ws-scroll">
           <div class="epub-ws-box">
             <p class="epub-ws-box-title">${T("Significado")}</p>
+            <select id="epub-ws-defdict" class="epub-ws-dictsel" aria-label="${T("Diccionario de definiciones")}"></select>
             <div id="epub-ws-meaning"><p class="epub-dict-status">${T("Buscando la definición…")}</p></div>
-            <p class="epub-dict-src">${T("Diccionario · Wikcionario, el diccionario libre")}</p>
+            <p class="epub-dict-src" id="epub-ws-defsrc">${T("Diccionario · Wikcionario, el diccionario libre")}</p>
           </div>
           <div class="epub-ws-box">
             <p class="epub-ws-box-title">${T("Traducción")}</p>
@@ -6219,6 +6511,7 @@ function epubOpenWordSheet() {
   const tb = document.getElementById("epub-ws-trans");
   if (tb) tb.innerHTML = `<p class="epub-dict-hint">${T("Toca «Traducir» para ver esta palabra en el otro idioma.")}</p>`;
   epubDictSelSync();
+  epubDefSelSync();
   const btn = document.getElementById("epub-ws-translate-btn");
   if (btn) { btn.disabled = false; btn.textContent = T("Traducir"); }
   sh.hidden = false;
@@ -6256,7 +6549,15 @@ async function epubWsLoadMeaning() {
   if (seq !== epubWsSeq) return;
   if (!defs || !defs.length) {
     epubWsDefs = null;
-    box.innerHTML = `<p class="epub-dict-none">${T("Sin definición para esta palabra.")}</p>`;
+    /* Con un diccionario concreto elegido (distinto del
+       Wikcionario de siempre), el aviso nombra ese diccionario:
+       que se sepa dónde se buscó y que el selector es la salida. */
+    const defId = epubDefSelGet();
+    if (defId !== "wikcionario") {
+      box.innerHTML = `<p class="epub-dict-none">${T("Sin entrada para esta palabra en")} «${esc(epubDefSourceName(defId))}».</p><p class="epub-dict-hint">${T("Prueba con otro diccionario del selector.")}</p>`;
+    } else {
+      box.innerHTML = `<p class="epub-dict-none">${T("Sin definición para esta palabra.")}</p>`;
+    }
     return;
   }
   epubWsDefs = defs;
@@ -6278,7 +6579,8 @@ function epubWsRenderMeaning() {
   const nMain = epubWsDefs.filter((d) => !d.variante).length;
   const nVar = epubWsDefs.filter((d) => d.variante).length;
   const recortada = nMain > 3 || nVar > 2;
-  box.innerHTML = epubFormaHeadHtml(epubWsDefs)
+  box.innerHTML = epubFormasPrincipalesHtml(epubWsDefs)
+    + epubFormaHeadHtml(epubWsDefs)
     + (epubWsDefExpanded ? epubDefsHtmlFull(epubWsDefs) : epubDefsHtml(epubWsDefs))
     + (recortada ? `<p class="epub-dict-hint epub-ws-more">${epubWsDefExpanded ? T("Toca para recoger la definición") : T("Toca para ver la definición completa")}</p>` : "");
   const wrap = box.closest(".epub-ws-box");
@@ -6407,6 +6709,83 @@ function epubWsAttach() {
     head.addEventListener("click", (e) => {
       if (Date.now() < suppressClickUntil) { e.preventDefault(); e.stopPropagation(); }
     }, true);
+  }
+}
+
+/* Selector de diccionario de DEFINICIONES (r66p13): a un lado
+   del cuadro de Significado, con el mismo patrón que el de
+   traducción de aquí abajo — los diccionarios viven en el VPS
+   (llegan en la clave «diccionarios» de GET
+   /magister/traducir/fuentes, el mismo endpoint que ya alimenta
+   el selector de traducción), así que los nuevos aparecen
+   solos; la elección se recuerda en localStorage y por defecto
+   es «wikcionario» (el de siempre).
+   Al cambiar, la palabra abierta se consulta de nuevo con ese
+   diccionario y el cuadro de Significado se repinta; la línea
+   de fuente bajo el cuadro pasa a nombrar el diccionario
+   elegido. El clic en el selector NO burbujea al cuadro (el
+   cuadro entero despliega/recoge la definición al tocarlo). */
+const EPUB_DEFSEL_KEY = "magister-epub-defsel-v1";
+const EPUB_DEF_LANG_NAMES = { es: "español", en: "inglés", ca: "catalán", de: "alemán", fr: "francés", it: "italiano", pt: "portugués", la: "latín" };
+let epubDefSources = null;
+
+function epubDefSelGet() {
+  try { return window.localStorage.getItem(EPUB_DEFSEL_KEY) || "wikcionario"; } catch { return "wikcionario"; }
+}
+
+async function epubDefSourcesLoad() {
+  if (epubDefSources) return epubDefSources;
+  let list = null;
+  if (MAGISTER_DICT_ENABLED) {
+    try {
+      const r = await fetch(MAGISTER_API_BASE + "/traducir/fuentes");
+      if (r.ok) {
+        const j = await r.json();
+        if (j && Array.isArray(j.diccionarios) && j.diccionarios.length) list = j.diccionarios;
+      }
+    } catch { /* sin red con el VPS: queda el mínimo de emergencia */ }
+  }
+  if (!list) list = [{ id: "wikcionario", nombre: "Wikcionario", idioma: "es", glosas_en: "es" }];
+  epubDefSources = list;
+  return list;
+}
+
+function epubDefSourceName(id) {
+  const f = (epubDefSources || []).find((x) => x.id === id);
+  return f ? (f.nombre || f.id) : id;
+}
+
+function epubDefSrcSync() {
+  const el = document.getElementById("epub-ws-defsrc");
+  if (!el) return;
+  const id = epubDefSelGet();
+  el.textContent = id === "wikcionario"
+    ? T("Diccionario · Wikcionario, el diccionario libre")
+    : T("Diccionario") + " · " + epubDefSourceName(id);
+}
+
+async function epubDefSelSync() {
+  const sel = document.getElementById("epub-ws-defdict");
+  if (!sel) return;
+  const sources = await epubDefSourcesLoad();
+  const wanted = epubDefSelGet();
+  sel.innerHTML = sources.map((f) => {
+    const lang = EPUB_DEF_LANG_NAMES[f.glosas_en] || f.glosas_en || "";
+    const nombre = f.nombre || f.id;
+    const label = lang && !nombre.toLowerCase().includes(lang) ? nombre + " · " + lang : nombre;
+    return `<option value="${esc(f.id)}">${esc(label)}</option>`;
+  }).join("");
+  sel.value = sources.some((f) => f.id === wanted) ? wanted
+    : (sources[0] ? sources[0].id : "");
+  epubDefSrcSync();
+  if (!sel.__mgDefSelHook) {
+    sel.__mgDefSelHook = true;
+    sel.addEventListener("click", (e) => { e.stopPropagation(); });
+    sel.addEventListener("change", () => {
+      try { window.localStorage.setItem(EPUB_DEFSEL_KEY, sel.value); } catch { /* sin almacenamiento */ }
+      epubDefSrcSync();
+      if (!epubWsTransOnly) epubWsLoadMeaning();
+    });
   }
 }
 
@@ -6547,8 +6926,16 @@ async function epubDictLocal(term) {
     /* r62: formas=lema — si la palabra es una forma
        (conjugación, plural, femenino…), el servicio sigue al
        lema y devuelve SUS definiciones, con j.forma avisando
-       del salto; la lista lo arrastra como «formaDe». */
-    const r = await fetch(MAGISTER_API_BASE + "/diccionario?palabra=" + encodeURIComponent(term) + "&formas=lema");
+       del salto; la lista lo arrastra como «formaDe».
+       r66p13: con un diccionario de definiciones concreto
+       elegido en el selector del cuadro de Significado, la
+       consulta lleva &diccionario=<id> y manda ese diccionario;
+       con el de siempre («wikcionario») la URL es la de antes. */
+    const defId = epubDefSelGet();
+    let url = MAGISTER_API_BASE + "/diccionario?palabra=" + encodeURIComponent(term);
+    if (defId && defId !== "wikcionario") url += "&diccionario=" + encodeURIComponent(defId);
+    else url += "&formas=lema";
+    const r = await fetch(url);
     if (!r.ok) return null;
     const j = await r.json();
     if (!j) return null;
@@ -6557,6 +6944,10 @@ async function epubDictLocal(term) {
       if (d && d.texto) out.push({ pos: d.pos || "", text: d.texto });
     }
     if (j.forma && j.forma.lema) out.formaDe = { forma: j.forma.palabra || term, lema: j.forma.lema };
+    /* Partes principales del latín (solo las trae el
+       diccionario latín-español): la hoja las pinta arriba del
+       cuadro de Significado. */
+    if (j.formas_principales) out.formasPrincipales = j.formas_principales;
     const v = j.variante;
     if (v && Array.isArray(v.definiciones)) {
       for (const d of v.definiciones) {
@@ -6575,6 +6966,10 @@ async function epubDictLocal(term) {
 async function epubFetchDefs(term) {
   let defs = await epubDictLocal(term);
   if (defs) return defs;
+  /* Con un diccionario concreto elegido NO se cae a la cadena
+     en vivo: si ese diccionario no tiene la palabra, la caja lo
+     dice (mensaje con su nombre) en vez de traer otra fuente. */
+  if (epubDefSelGet() !== "wikcionario") return null;
   defs = await epubDictWikt(term);
   if (!defs && term !== term.toLowerCase()) defs = await epubDictWikt(term.toLowerCase());
   if (!defs) defs = await epubDictApiDev(term);
@@ -6608,6 +7003,21 @@ function epubFormaHeadHtml(defs) {
   return defs && defs.formaDe
     ? `<p class="epub-dict-var">«${esc(defs.formaDe.forma)}» — ${T("forma de")} «${esc(defs.formaDe.lema)}»</p>`
     : "";
+}
+
+/* Ficha de formas del latín (r66p13): solo la trae el
+   diccionario latín-español — sustantivo: «nominativo ·
+   genitivo»; verbo: «infinitivo · perfecto · participio» — y
+   se pinta ARRIBA del cuadro de Significado, con las formas
+   que la fuente traiga (nunca se inventa ninguna). */
+function epubFormasPrincipalesHtml(defs) {
+  const fp = defs && defs.formasPrincipales;
+  if (!fp) return "";
+  const partes = fp.pos === "verb"
+    ? [fp.infinitivo, fp.perfecto, fp.participio]
+    : [fp.nominativo, fp.genitivo];
+  const txt = partes.filter(Boolean).join(" · ");
+  return txt ? `<p class="epub-dict-formas">${esc(txt)}</p>` : "";
 }
 
 async function epubDictLookup(word, seq) {
