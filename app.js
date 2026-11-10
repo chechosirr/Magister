@@ -1867,7 +1867,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r66";
+const EPUB_BUILD = "r67";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -2135,7 +2135,154 @@ const EPUB_CURL_TONES = {
        0.946): la campana de la base se conserva, solo
        con el piso más oscuro. Cola (34,5 %), fuera
        (53,1 %) y borde libre intactos. */
-    castGrad: "linear-gradient(90deg, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.420) 30%, rgba(0,0,0,0.148) 62%, rgba(0,0,0,0) 100%)",
+    /* r67 (PUBLICADO; orden de Sergio: «solo publica la
+       nueva versión del tema oscuro»): este bloque oscuro
+       trae la versión pulida en las pruebas del preview
+       (serie r66p: costura con campana suave y cola
+       difuminada hasta mitad del doblez + proyectada
+       ×1,5 con el final sin borde). De esas pruebas SOLO
+       se publica el tema oscuro; claro y menta quedan
+       como en la r66 (ver las notas en sus bloques). */
+    /* r66p5 (prueba): la proyectada sube ×1,5 a petición
+       de Sergio («la sombra vieja hazla 50 % más fuerte»):
+       0.78→0.99 (el ×1,5 daría 1.17: se recorta en 0.99),
+       0.420→0.63, 0.148→0.222; misma forma y mismo
+       alcance (~120 px). Junto a la línea el medido satura
+       contra el papel (no cabe ×1,5 de oscurecimiento);
+       en la cola (+40) el ×1,5 medido sí es pleno. */
+    /* r66p6 (prueba): Sergio, sobre la r66p5 — «arregla
+       la sombra de la página de abajo; no se ve bien el
+       degradado hacia la luz: al final se le ve como un
+       rayo de luz bien rectangular y evidente». Causa: la
+       capa .cv-cast medía 120 px y la rampa lineal
+       0.222→0 moría justo EN el borde físico de la capa:
+       quiebre de pendiente terminal (de −0,0049/px a 0 en
+       un px) sobre una capa recta y paralela al doblez =
+       línea luminosa rectangular. Arreglo: la capa crece
+       a 210 px (su borde físico queda donde el alfa ya es
+       ~0,001) y la cola deja de ser rampa: desde la última
+       parada del cuerpo (74,4 px, MISMO alfa y MISMA
+       posición en px que la r66p5: el cuerpo 0/36/74,4 px
+       no cambia ni un alfa — la intensidad del oscuro se
+       queda como está) la caída sigue una curva (1−s)^4
+       muestreada en 5 paradas, con pendientes por tramo
+       que se van partiendo a la mitad
+       (0,0052→0,0031→0,0016→0,0007→0,0002→~0): la sombra
+       muere sin escalón ni quiebre perceptible. Las
+       posiciones pasan a % de 210 px: 36 px = 17,1 %,
+       74,4 px = 35,4 %, y la cola en 45,1/54,8/64,5/
+       74,2/83,9 %. */
+    castGrad: "linear-gradient(90deg, rgba(0,0,0,0.99) 0%, rgba(0,0,0,0.63) 17.1%, rgba(0,0,0,0.222) 35.4%, rgba(0,0,0,0.116) 45.1%, rgba(0,0,0,0.053) 54.8%, rgba(0,0,0,0.020) 64.5%, rgba(0,0,0,0.0057) 74.2%, rgba(0,0,0,0.0009) 83.9%, rgba(0,0,0,0) 100%)",
+    /* r66p2 (PRUEBA en preview, photo-102 de Sergio):
+       degradado PROPIO de la sombra del borde de la
+       solapa, que desde la v4 pinta la capa de costura
+       (.cv-fold-seam) POR ENCIMA de la solapa — ver la
+       nota en refl —. Sergio: «haz más oscura la sombra
+       nueva» — la r66p la igualaba a la proyectada (el
+       castGrad de arriba, pico 0.78); esta la supera
+       con claridad. La franja corre a caballo de la
+       línea sobre 57 px (5 del lado de la proyectada,
+       52 del de la solapa): la cabeza del lado de la
+       proyectada nace en cero, entierra la columna del
+       borde del recorte (0.72 a ~3 px de la línea) y
+       MUERE en la línea + 5 px, así que la proyectada
+       queda intacta de +6 px en adelante; del lado de
+       la solapa el pico es 0.97 en la línea y sostiene
+       más cuerpo que la proyectada en todo el tramo
+       (0.90 al 19 %, 0.64 al 33 %); muere antes de la
+       cresta (~51 px), que no se toca. La proyectada
+       (castGrad) NO cambia. La cabeza va reforzada
+       (0.88 al 5 %) porque el alfa ENTREGADO en esa
+       zona rinde ~0.1-0.15 por debajo del nominal
+       (medido: con 0.72 nominal la costura quedaba en
+       ~53 de luminancia en vez de ~30).
+       r66p3 (prueba): Sergio, sobre la r66p2 —
+       «bájale un 30 % a la sombra nueva». El CUERPO
+       de la franja (paradas del 19 % en adelante)
+       baja ×0,63 nominal, que es lo que deja el
+       oscurecimiento MEDIDO a −6 px en ≈×0,70 del
+       de la r66p2 (el resto del oscurecimiento en
+       esa columna lo pone la banda, que no se
+       toca; con ×0,7 uniforme el medido quedaba en
+       ×0,76). La CABEZA (paradas 0–9 %, los 5 px
+       del lado de la proyectada y la columna de la
+       línea) se queda con los valores de la r66p2:
+       medido en la primera ronda de la r66p3, al
+       bajar también la cabeza reaparecía la raya —
+       el resquicio de 2 px de la solapa que cruza
+       la línea se filtraba (pico de costura +13..+18
+       sobre los flancos) — y esa cabeza no es parte
+       del cuerpo visible de la franja: solo entierra
+       el borde. La proyectada no cambia.
+       r66p4 (prueba): Sergio, sobre la r66p3 —
+       «se sigue viendo una raya blanca en el pliegue»
+       y «haz que la sombra nueva se vaya extendiendo
+       de manera difuminada hacia 1/3 del doblez».
+       (1) Sellado de la línea: el barrido de TODO el
+       recorrido (WebKit y Chromium, DSF=3, dedo a 3
+       alturas, pases sostenidos y ráfagas de la
+       animación de cometer, tres temas y ambos
+       sentidos; análisis por estaciones a lo largo
+       del doblez, sin colapsar en medianas) no
+       reproduce la raya en ningún fotograma — el
+       único pico resultó ser un glifo de texto que
+       cruza la línea — pero su iPhone es la verdad
+       final: la cabeza gana una MESETA casi opaca
+       (0.98) a caballo de la línea, de +1,0 a
+       −2,4 px, para que ningún efecto de borde o
+       de suavizado en su aparato deje un píxel
+       claro sobre la línea en ningún punto del
+       recorrido. La rampa del lado de la proyectada
+       no cambia, y el ancla de −6 px conserva su
+       valor (0.567): la intensidad junto a la línea
+       es la de la r66p3. (2) Cola difuminada: la
+       franja crece de 57 a 112 px y el cuerpo ya no
+       muere a −52 px: desde el ancla de −6 decae
+       suave y monótono (0.42 a −14, 0.28 a −28,
+       0.17 a −45, 0.095 a −65, 0.045 a −85,
+       0.015 a −100) hasta cero a −107 px ≈ 1/3
+       del doblez (la banda del rizo mide 320 px).
+       La proyectada no cambia; la cresta en su
+       zona propia tampoco.
+       r66p5 (prueba): Sergio, con su photo-103 sobre
+       la r66p4 — «¿Esa raya negra qué es?» —: la
+       MESETA de sellado se leía en su iPhone como una
+       raya negra fina y dura sobre la línea. Y pide
+       además la forma final de la sombra nueva:
+       «extiendas esa sombra sobre el doblez y que
+       llegue a mitad del doblez, y que en el inicio
+       sea más fuerte y a medida que va hacia el
+       centro desaparezca». Tres movimientos:
+       (1) Sellado FUNDIDO: fuera la meseta — el pico
+       (0.94) se alcanza en la línea con una campana
+       suave tipo cos² (pendiente cero en el pico y
+       en el ancla), sin tramo plano ni escalón: el
+       perfil a través del doblez es una sola sombra
+       continua, sin raya blanca ni negra. El ancla
+       de −6 px conserva su valor (0.567): la
+       intensidad junto a la línea es la aprobada.
+       (2) Cola a MITAD del doblez: la franja crece
+       de 112 a 165 px (5 del lado de la proyectada y
+       160 del de la solapa) y desde el ancla decae
+       monótona y suave hasta cero a −160 px = la
+       mitad de la banda del rizo (320 px),
+       sustituyendo el tercio de la r66p4.
+       (3) La proyectada sube ×1,5 (ver castGrad).
+       Corrección tras la primera medición de la
+       r66p5: la campana primera (pico solo en la
+       línea) dejaba transparentar el resquicio —
+       la solapa cruza la línea ~2,4 px hacia la
+       proyectada — como una cresta clara a
+       +0,5..+2,25 con un escalón de ~24-28 de
+       luminancia en el perfil mediano al borde del
+       resquicio. La cabeza sube ahora a 0.95 ya a
+       +2,9 px y baja en rampa casi plana (0.95→
+       0.94) hasta la línea: el compuesto sobre el
+       resquicio queda al nivel de la proyectada
+       ×1,5 que lo rodea, sin cresta ni escalón, y
+       el lado visible (la solapa) conserva la
+       campana suave sin tramo plano. */
+    seamGrad: "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.32) 0.42%, rgba(0,0,0,0.66) 0.85%, rgba(0,0,0,0.95) 1.27%, rgba(0,0,0,0.94) 3.03%, rgba(0,0,0,0.915) 3.64%, rgba(0,0,0,0.847) 4.24%, rgba(0,0,0,0.754) 4.85%, rgba(0,0,0,0.660) 5.45%, rgba(0,0,0,0.592) 6.06%, rgba(0,0,0,0.567) 6.67%, rgba(0,0,0,0.520) 9.09%, rgba(0,0,0,0.454) 11.52%, rgba(0,0,0,0.385) 15.15%, rgba(0,0,0,0.312) 20%, rgba(0,0,0,0.247) 25.45%, rgba(0,0,0,0.190) 31.52%, rgba(0,0,0,0.142) 38.18%, rgba(0,0,0,0.103) 45.45%, rgba(0,0,0,0.071) 53.33%, rgba(0,0,0,0.046) 61.82%, rgba(0,0,0,0.028) 70.91%, rgba(0,0,0,0.015) 80.61%, rgba(0,0,0,0.006) 90.30%, rgba(0,0,0,0) 100%)",
     shade: 0.22, sheen: 0.10,
     /* r46: wash recalibrado 0.01 → 0.007 (conservaba su
        ρ≈1,027 sobre el anverso carbón). r50: con el fondo
@@ -2238,7 +2385,19 @@ const EPUB_CURL_TONES = {
        raíz actual de la r56 (0.26 cálida, que se queda) y
        la cresta restaurada. La raíz y el castGrad de la
        r56 no se tocan; el bloque oscuro, byte a byte. */
-    castGrad: "linear-gradient(90deg, rgba(48,35,12,0.93) 0%, rgba(48,35,12,0.501) 30%, rgba(48,35,12,0.176) 62%, rgba(48,35,12,0) 100%)",
+    /* r67 (PUBLICADO): la proyectada de claro conserva el
+       perfil medido de la r66. La capa .cv-cast crece a
+       210 px (geometría compartida que el nuevo tema
+       oscuro necesita) y este degradado reexpresa las
+       paradas de la r66 en % de 210 px — 30 % de 120 px
+       = 17,1429 % de 210 (36 px), 62 % = 35,4286 %
+       (74,4 px), 100 % = 57,1429 % (120 px) — para que
+       el alfa a cada distancia en px sea el de la r66.
+       Su seamGrad es transparente entero: la capa de
+       costura solo pinta en el tema oscuro, y el perfil
+       medido de claro queda el de la r66. */
+    castGrad: "linear-gradient(90deg, rgba(48,35,12,0.93) 0%, rgba(48,35,12,0.501) 17.1429%, rgba(48,35,12,0.176) 35.4286%, rgba(48,35,12,0) 57.1429%, rgba(48,35,12,0) 100%)",
+    seamGrad: "linear-gradient(90deg, rgba(48,35,12,0) 0%, rgba(48,35,12,0) 100%)",
     shade: 0.22, sheen: 0.10,
     wash: "linear-gradient(90deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.14) 55%, rgba(255,255,255,0) 100%)",
     washPrev: "linear-gradient(270deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.14) 55%, rgba(255,255,255,0) 100%)",
@@ -2289,7 +2448,13 @@ const EPUB_CURL_TONES = {
        misma curva suave entre la raíz actual (0.21, que
        se queda) y la cresta restaurada. Raíz y castGrad
        intactos; el oscuro, byte a byte. */
-    castGrad: "linear-gradient(90deg, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.42) 30%, rgba(0,0,0,0.148) 62%, rgba(0,0,0,0) 100%)",
+    /* r67 (PUBLICADO): como en claro (ver la nota
+       allí) — la proyectada de menta conserva el perfil
+       medido de la r66 reexpresado sobre la capa de
+       210 px, y su seamGrad es transparente entero: la
+       capa de costura solo pinta en el tema oscuro. */
+    castGrad: "linear-gradient(90deg, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.42) 17.1429%, rgba(0,0,0,0.148) 35.4286%, rgba(0,0,0,0) 57.1429%, rgba(0,0,0,0) 100%)",
+    seamGrad: "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 100%)",
     shade: 0.22, sheen: 0.10,
     wash: "linear-gradient(90deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
     washPrev: "linear-gradient(270deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.03) 55%, rgba(255,255,255,0) 100%)",
@@ -2427,6 +2592,7 @@ function epubHtml() {
           <div class="cv-flap-paper"></div>
           <div class="cv-flap-band"></div>
         </div>
+        <div class="cv-fold-seam" id="epub-curl-seam"></div>
       </div>
       <div class="epub-sheet" id="epub-sheet" aria-hidden="true"></div>
       <div class="epub-fold" id="epub-fold" hidden aria-hidden="true"><div class="epub-fold-shade"></div><div class="epub-fold-flap"></div></div>
@@ -3794,6 +3960,7 @@ function epubCurlTryBegin(g, x, y) {
   const holder = document.getElementById("epub-curl-strips");
   const flap = document.getElementById("epub-curl-flap");
   const cast = document.getElementById("epub-curl-cast");
+  const seam = document.getElementById("epub-curl-seam");
   const wash = document.getElementById("epub-curl-wash");
   const flatWrap = document.getElementById("epub-curl-flat");
   /* r45: el fondo tras el anverso es siempre el del tema
@@ -3822,6 +3989,18 @@ function epubCurlTryBegin(g, x, y) {
        con "block" para poder probar la sombra tenue. */
     cast.style.display = "block";
     cast.style.background = T.castGrad || ("linear-gradient(90deg, " + T.cast + " 0%, rgba(0,0,0,0) 100%)");
+  }
+  if (seam) {
+    /* r66p2 v4 (prueba, photo-102): la sombra del borde
+       vive en la capa de costura (.cv-fold-seam), POR
+       ENCIMA de la solapa — ver la nota en su CSS —.
+       Aquí solo recibe el degradado del tema (seamGrad);
+       se enciende en FoldFrame, con la misma regla de
+       distancia que la proyectada. r67 (PUBLICADO): solo
+       el tema oscuro trae seamGrad con pintura; en claro
+       y menta el degradado es transparente entero. */
+    seam.style.display = "none";
+    seam.style.background = T.seamGrad || T.castGrad || ("linear-gradient(90deg, " + T.cast + " 0%, rgba(0,0,0,0) 100%)");
   }
   if (flap) {
     flap.hidden = false;
@@ -4094,6 +4273,7 @@ function epubCurlFoldFrame(K, F) {
   const flat = document.getElementById("epub-curl-flat");
   const flap = document.getElementById("epub-curl-flap");
   const cast = document.getElementById("epub-curl-cast");
+  const seam = document.getElementById("epub-curl-seam");
   const wash = document.getElementById("epub-curl-wash");
   const dx = F.x - K.x, dy = F.y - K.y;
   const dist = Math.hypot(dx, dy);
@@ -4121,6 +4301,7 @@ function epubCurlFoldFrame(K, F) {
     if (flat) flat.style.clipPath = "";
     if (flap) flap.style.clipPath = "polygon(0px 0px, 0px 0px, 0px 0px)";
     if (cast) cast.style.display = "none";
+    if (seam) seam.style.display = "none";
     return;
   }
   const nx = dx / dist, ny = dy / dist;
@@ -4150,7 +4331,21 @@ function epubCurlFoldFrame(K, F) {
      puede salirse del área del libro (la capa no recorta). */
   const refl = clipHalf(rect, false).map((p) => {
     const s = sOf(p);
-    return { x: p.x - 2 * s * nx, y: p.y - 2 * s * ny };
+    const q = { x: p.x - 2 * s * nx, y: p.y - 2 * s * ny };
+    /* r66p2 (prueba, photo-102): los vértices que quedan
+       SOBRE la línea de doblez se cruzan 2 px hacia el
+       lado de la proyectada: la raya clara seguía al
+       borde del polígono de la solapa (en esa columna su
+       compuesto claro se filtra con el suavizado del
+       recorte y ninguna pintura de dentro lo cubre); el
+       cruce pone esa columna bajo la cabeza de la capa
+       de costura. r67 (PUBLICADO): el cruce se aplica
+       SOLO en el tema oscuro — la única versión que se
+       publica de las pruebas —; en claro y menta la
+       geometría de la solapa queda la de la r66, sin
+       cambios medibles. */
+    if (epubThemeName === "oscuro" && Math.abs(sOf(q)) < 0.3) { q.x -= 2 * nx; q.y -= 2 * ny; }
+    return q;
   });
   if (flap) {
     flap.style.clipPath = polyStr(refl);
@@ -4163,6 +4358,20 @@ function epubCurlFoldFrame(K, F) {
     const phi = Math.atan2(ny, nx) * 180 / Math.PI;
     const band = flap.querySelector(".cv-flap-band");
     if (band) band.style.transform = "translate(" + M.x.toFixed(1) + "px, " + M.y.toFixed(1) + "px) rotate(" + phi.toFixed(1) + "deg) translate(0px, -1300px)";
+    /* r66p2 v4 (prueba): la sombra del borde vive en la
+       capa de costura (.cv-fold-seam), hermana POSTERIOR
+       de la solapa: pinta POR ENCIMA de todo el doblez,
+       anclada y rotada como la banda y a caballo de la
+       línea (translate -5px: 5 px del lado de la
+       proyectada y 160 del de la solapa — la cola
+       difuminada llega a mitad del doblez, r66p5 —).
+       r67 (PUBLICADO): la capa corre en los tres temas
+       pero solo pinta en el oscuro (en claro y menta su
+       degradado es transparente). */
+    if (seam) {
+      seam.style.display = "block";
+      seam.style.transform = "translate(" + M.x.toFixed(1) + "px, " + M.y.toFixed(1) + "px) rotate(" + phi.toFixed(1) + "deg) translate(-5px, -1300px)";
+    }
   }
   if (cast) {
     cast.style.display = "block"; /* r51: ver la nota en TryBegin */
@@ -4352,6 +4561,8 @@ function epubCurlSettle(complete) {
     if (flap) flap.hidden = true;
     const cast = document.getElementById("epub-curl-cast");
     if (cast) cast.style.display = "none";
+    const seam = document.getElementById("epub-curl-seam");
+    if (seam) seam.style.display = "none";
     const holder = document.getElementById("epub-curl-strips");
     if (holder) holder.style.visibility = "";
     const flatWrap = document.getElementById("epub-curl-flat");
@@ -4402,6 +4613,8 @@ function epubCurlSettle(complete) {
     if (flatWrap) flatWrap.style.visibility = "hidden";
     const cast = document.getElementById("epub-curl-cast");
     if (cast) cast.style.display = "none";
+    const seam = document.getElementById("epub-curl-seam");
+    if (seam) seam.style.display = "none";
     const holder = document.getElementById("epub-curl-strips");
     if (holder) holder.style.visibility = "hidden";
     coverEl.style.display = "";

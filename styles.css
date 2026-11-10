@@ -1348,7 +1348,13 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
   /* r51 (prueba r50p, aprobada por Sergio y publicada): la sombra proyectada se
      ensancha de 52 a 120 px para que su degradado difuso
      (castGrad) caiga suave sobre la página revelada. */
-  position: absolute; left: 0; top: 0; width: 120px; height: 2600px;
+  /* r66p6 (prueba): la capa crece a 210 px — su borde
+     físico queda donde el degradado ya vale ~0,001,
+     para que el final de la sombra no coincida con un
+     borde recto visible (el «rayo de luz rectangular»
+     que Sergio vio en la r66p5); la cola del castGrad
+     muere en curva suave hasta el 100 % de la capa. */
+  position: absolute; left: 0; top: 0; width: 210px; height: 2600px;
   transform-origin: 0 0; pointer-events: none; display: none;
 }
 
@@ -1373,4 +1379,52 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
      duna llegue, desvaneciéndose, hasta el fin de la hoja. */
   position: absolute; left: 0; top: 0; width: 320px; height: 2600px;
   transform-origin: 0 0; pointer-events: none;
+}
+
+/* r66p (PRUEBA en preview, photo-101 de Sergio): sombra del
+   borde de la solapa pegada al doblez — la franja que él
+   marcó en amarillo sobre la foto. Nació DENTRO de la
+   solapa como gemela de la proyectada (cv-cast): mismo
+   degradado del tema (castGrad), misma intensidad de
+   pico, anclada y rotada como la banda en un elemento de
+   48 px, muriendo antes de la cresta. Antes de ella esa
+   franja solo llevaba la raíz débil de la banda (medido:
+   oscurecimiento ~41 en claro frente a ~174 de la
+   proyectada a la misma distancia del doblez).
+   r66p2 (prueba, photo-102): Sergio pide dos cosas —
+   que desaparezca la RAYA CLARA que se ve en el doblez
+   junto a esta franja, y que la sombra nueva sea MÁS
+   OSCURA (pasa a llevar su degradado propio seamGrad,
+   por encima de la proyectada).
+   r66p2 v4 (medido, bisección por capas): la raya no
+   era un hueco fijo en la línea — SEGUÍA al borde del
+   polígono de la solapa dondequiera que se pusiera:
+   en la columna del borde, el compuesto claro de la
+   solapa (fantasma y papel) se filtra con el
+   suavizado del recorte, mientras sus hijos girados
+   quedan recortados ~1 px más adentro, así que
+   ninguna pintura oscura DENTRO de la solapa cubre
+   su propio borde (v2 y v3 lo confirmaron: la raya
+   se mudaba con el borde). La cura: la sombra sale
+   de la solapa y vive en esta capa de COSTURA,
+   hermana posterior de la solapa — pinta POR ENCIMA
+   de todo el doblez, sin recorte, anclada y rotada
+   como la banda y A CABALLO de la línea: 112 px de
+   franja (5 del lado de la proyectada, donde su
+   cabeza nace en cero y muere en la línea + 5 px —
+   la proyectada queda intacta de +6 px en adelante —
+   y 107 del lado de la solapa: desde la r66p4 la
+   cola se extiende difuminada hasta ~1/3 del
+   doblez, sin tocar la cresta en su zona propia).
+   Como la proyectada,
+   nace display:none y el JS la enciende por fotograma
+   con la misma regla de distancia.
+   r66p5: la franja crece a 165 px — la cola de la
+   sombra nueva llega a 160 px del lado de la solapa
+   (mitad del doblez) desvaneciéndose hasta cero —
+   y el sellado pierde la meseta dura: campana suave
+   sin raya (ver el seamGrad en app.js). */
+.epub-curl .cv-fold-seam {
+  position: absolute; left: 0; top: 0; width: 165px; height: 2600px;
+  transform-origin: 0 0; pointer-events: none; display: none;
 }
