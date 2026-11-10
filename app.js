@@ -2518,7 +2518,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r72";
+const EPUB_BUILD = "r73";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -5415,14 +5415,19 @@ async function initEpubReader() {
   }
   if (seq !== epubInitSeq) return;
   try {
-    await epubOpenBook(seq, false);
+    await epubOpenWithWatchdog(seq, false);
   } catch (err) {
     if (seq !== epubInitSeq) return;
+    /* r73: la secuencia se invalida antes del rescate — si el
+       primer intento estaba solo atascado (promesa colgada), su
+       continuación tardía no debe pisar el modo mínimo. */
+    epubInitSeq += 1;
+    const seqMin = epubInitSeq;
     epubTeardownBook();
     try {
-      await epubOpenBook(seq, true);
+      await epubOpenWithWatchdog(seqMin, true);
     } catch (err2) {
-      if (seq !== epubInitSeq) return;
+      if (seqMin !== epubInitSeq) return;
       const loading = document.getElementById("epub-loading");
       if (loading) {
         loading.hidden = false;
@@ -5517,6 +5522,65 @@ function epubZoomGuard() {
   }, { passive: false, capture: true });
 }
 
+/* r73 — blindaje de la restauración de posición. Si el EPUB de un
+   libro se sustituye por otra edición con el mismo gid (una
+   conversión mejorada, p. ej.), una posición guardada puede apuntar
+   a un nodo/offset que ya no existe en el ejemplar actual: el
+   display() de epub.js NO rechaza en ese caso — su promesa queda
+   colgada para siempre y el IndexSizeError salta fuera de la
+   cadena, así que ningún catch podía salvar la apertura y el
+   lector se quedaba en «Abriendo el libro…» (libro de prueba de
+   Sergio, 10-nov: el servidor le entregó el libro entero tres
+   veces y su lector nunca pasó de esa pantalla). Tres capas:
+   (1) la posición se valida con getRange(), que SÍ rechaza en
+   limpio si no resuelve — si no resuelve, se descarta y el libro
+   abre desde la portada; (2) todo display() de la apertura va con
+   tiempo límite; (3) initEpubReader vigila la apertura entera con
+   un temporizador y cae al modo mínimo si algo se atasca. */
+const EPUB_CFI_CHECK_MS = 8000;
+const EPUB_DISPLAY_TIMEOUT_MS = 15000;
+const EPUB_OPEN_WATCHDOG_MS = 30000;
+
+async function epubCfiResuelve(cfi) {
+  if (!epubBook || typeof epubBook.getRange !== "function") return true;
+  let timer = null;
+  try {
+    await Promise.race([
+      (async () => { await epubBook.ready; await epubBook.getRange(cfi); })(),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("cfi-check-timeout")), EPUB_CFI_CHECK_MS); }),
+    ]);
+    return true;
+  } catch (e) {
+    /* Un simple retraso al comprobar no condena la posición: la
+       decide el display() con su propio límite. */
+    return !!(e && e.message === "cfi-check-timeout");
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+function epubDisplayBounded(target) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const timer = setTimeout(() => { if (!done) { done = true; reject(new Error("display-timeout")); } }, EPUB_DISPLAY_TIMEOUT_MS);
+    let p;
+    try { p = epubRendition.display(target); }
+    catch (e) { done = true; clearTimeout(timer); reject(e); return; }
+    Promise.resolve(p).then(
+      (v) => { if (!done) { done = true; clearTimeout(timer); resolve(v); } },
+      (e) => { if (!done) { done = true; clearTimeout(timer); reject(e); } }
+    );
+  });
+}
+
+async function epubOpenWithWatchdog(seq, minimal) {
+  let timer = null;
+  try {
+    return await Promise.race([
+      epubOpenBook(seq, minimal),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("apertura-timeout")), EPUB_OPEN_WATCHDOG_MS); }),
+    ]);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
 async function epubOpenBook(seq, minimal) {
   epubMinimal = !!minimal;
   epubRestoreSettings();
@@ -5542,17 +5606,25 @@ async function epubOpenBook(seq, minimal) {
     /* Posición con forma imposible (guardada por otra build o
        dañada): se descarta ANTES de pedirla, no tras el fracaso. */
     if (startAt && !epubIsCfi(startAt)) { epubStoreRemove(epubPosKey()); startAt = undefined; }
+    /* r73: la forma no basta — la posición tiene que RESOLVER en
+       este ejemplar (ver la nota sobre epubCfiResuelve). Si el
+       libro cambió por debajo, la posición vieja se descarta aquí
+       y el libro abre desde la portada, sin llegar al display(). */
+    if (startAt && !(await epubCfiResuelve(startAt))) { epubStoreRemove(epubPosKey()); startAt = undefined; }
   }
   try {
-    await epubRendition.display(startAt);
+    await epubDisplayBounded(startAt);
   } catch (dispErr) {
     /* Una posición guardada que no se puede resolver (CFI de una
        sesión anterior dañado o incompatible con esta build) no
        debe condenar el lector a la pantalla de error: se descarta
-       la posición y el libro se abre desde la portada. */
+       la posición y el libro se abre desde la portada. El límite de
+       tiempo cubre además el display() que ni resuelve ni rechaza
+       (la promesa colgada de epub.js): sin él, este catch jamás
+       se alcanzaba en ese caso. */
     if (!startAt) throw dispErr;
     epubStoreRemove(epubPosKey());
-    await epubRendition.display();
+    await epubDisplayBounded(undefined);
   }
   if (seq !== epubInitSeq) throw new Error("apertura cancelada");
   if (loading) loading.hidden = true;
