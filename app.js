@@ -153,7 +153,7 @@ function catalogLang() {
   return CAT_LANGS.includes(l) ? l : "es";
 }
 
-function catalogBook(arr, slug) {
+function catalogBook(arr, slug, idioma) {
   const gid = arr[0];
   const id = 1000000 + gid;
   let b = BOOK_BY_ID.get(id);
@@ -164,9 +164,18 @@ function catalogBook(arr, slug) {
       category: CAT_NOMBRES[slug] || "Clásicos universales",
       hasContent: arr[3] === 1, epub: arr[3] === 1,
       coverUrl: null, catalogo: true,
+      /* r70p1: el idioma con el que el servicio entregó el libro
+         (las cargas por categoría van filtradas por idioma; la
+         categoría «Libros en latín» fuerza «la»). El lector lo usa
+         para ajustar solo su diccionario y su traducción. El
+         buscador global no filtra por idioma: ahí queda sin
+         declarar y el lector conserva el ajuste recordado. */
+      idioma: idioma || null,
     };
     BOOKS.push(b);
     BOOK_BY_ID.set(id, b);
+  } else if (!b.idioma && idioma) {
+    b.idioma = idioma;
   }
   return b;
 }
@@ -219,7 +228,7 @@ function catEnsureDetail(nombre) {
   catFetch("/destacados?cat=" + slug + "&idioma=" + lang + "&n=24")
     .then((r) => {
       if (catDetail !== d) return;
-      d.destacados = (r.books || []).map((a) => catalogBook(a, slug));
+      d.destacados = (r.books || []).map((a) => catalogBook(a, slug, slug === "latin" ? "la" : lang));
       d.enB2 = r.enB2 || 0;
       if (view.name === "categories" && view.category === nombre) render();
     })
@@ -248,7 +257,7 @@ function catDetailPage() {
         d.filtroPagina = r.pagina; d.filtroPaginas = r.paginas;
         d.filtroTotal = r.total;
         const nuevos = (r.books || []).map((b) =>
-          catalogBook([b.gid, b.titulo, b.autor, b.enB2], b.cat));
+          catalogBook([b.gid, b.titulo, b.autor, b.enB2], b.cat, d.slug === "latin" ? "la" : d.idioma));
         d.filtroBooks = (d.filtroBooks || []).concat(nuevos);
         if (view.name === "categories" && view.category === d.nombre) render();
       })
@@ -265,7 +274,7 @@ function catDetailPage() {
       d.busy = false;
       d.pagina = r.pagina; d.paginas = r.paginas;
       d.total = r.total; d.enB2 = r.enB2;
-      const nuevos = (r.books || []).map((a) => catalogBook(a, d.slug));
+      const nuevos = (r.books || []).map((a) => catalogBook(a, d.slug, d.slug === "latin" ? "la" : d.idioma));
       d.books = d.books.concat(nuevos);
       if (view.name === "categories" && view.category === d.nombre) render();
     })
@@ -293,7 +302,8 @@ function ensureCatSearch(q) {
       if (!catSearch || catSearch.q !== q) return;
       catSearch.total = r.total;
       catSearch.books = (r.books || []).map((b) =>
-        catalogBook([b.gid, b.titulo, b.autor, b.enB2], b.cat));
+        catalogBook([b.gid, b.titulo, b.autor, b.enB2], b.cat,
+          b.cat === "latin" ? "la" : (b.idioma || null)));
       if (view.name === "search" && (view.query || "") === q) render();
     })
     .catch(() => { catSearchBusy = false; });
@@ -306,6 +316,7 @@ let user = null;               // {id, name, email, subscribed, admin} cuando ha
 let libraryEntries = [];       // biblioteca personal (del servicio)
 let view = { name: "home" };   // home | library | categories | search | account | detail | reader | chat | epub
 let viewHistory = [];          // pila de vistas para la flecha de volver del header
+let lastViewKey = "";          // r71: última vista pintada (para animar solo los cambios de vista)
 let catalogHidden = new Set(); // ids pausados/eliminados en el servicio (no se muestran al público)
 let libTab = "estante";        // sección de «Tu biblioteca»: "estante" | "favoritos" | "recientes"
 const libFilter = { estante: "", favoritos: "", recientes: "" }; // buscador propio de cada sección (r32): término por sección, vivo mientras se está en la vista
@@ -373,29 +384,63 @@ function errorText(e) { return e instanceof Error ? e.message : String(e); }
 
 /* ------------------------------------------------------------ piezas */
 
-function coverHtml(book, large = false) {
+const PORTADA_BASE = "https://puente.ragerservices.net/magister/portada/";
+
+function coverHtml(book, large = false, soloTitulo = false) {
   if (book.coverUrl) {
     return `<img src="${book.coverUrl}" alt="Portada de ${esc(book.title)}" class="cover-img" loading="lazy">`;
   }
-  const c = spineColor(book.category);
-  return `<div aria-label="Portada de ${esc(book.title)}" class="cover-typo${large ? " large" : ""}" style="background: linear-gradient(150deg, ${c}, ${c}dd 55%, #00000055)">
-    <p class="t">${esc(book.title)}</p><p class="a">${esc(book.author)}</p></div>`;
+  /* soloTitulo (r70p1): en las tarjetas la portada tipográfica
+     lleva SOLO el título; el autor queda fuera de la tarjeta (en
+     la ficha grande, large, se sigue mostrando como siempre).
+     r70p2: la portada generada ya no lleva el color de la
+     categoría: su fondo es el ROJO TEXTURIZADO de styles.css
+     (.cover-typo), igual en todas partes, y se presenta como la
+     portada del libro, sin ningún rótulo que la distinga.
+     El título nace MÁS ABAJO (pedido de Sergio: «está muy
+     alto»): el desplazamiento va en % del ANCHO de la portada
+     (son 2:3, así que escala solo entre tarjeta y ficha) y se
+     modera con el largo del título — los muy largos arrancan
+     más arriba para seguir cabiendo enteros. */
+  const largoT = (book.title || "").length;
+  const bajaT = large
+    ? (largoT <= 30 ? 26 : largoT <= 60 ? 14 : 6)
+    : (largoT <= 45 ? 30 : largoT <= 85 ? 20 : 10);
+  const typo = `<div aria-label="Portada de ${esc(book.title)}" class="cover-typo${large ? " large" : ""}">
+    <p class="t" style="margin-top:${bajaT}%">${esc(book.title)}</p>${soloTitulo ? "" : `<p class="a">${esc(book.author)}</p>`}</div>`;
+  /* r70p1 (pedido de Sergio): los libros del catálogo intentan su
+     PORTADA REAL (servicio de portadas por gid); la tipográfica
+     queda DEBAJO como base, y si la imagen falla o no existe
+     (404) se retira sola y se ve la tipográfica — sin huecos ni
+     saltos, porque ambas llenan la misma caja 2/3. Carga perezosa:
+     los listados no se bloquean. El escaparate de los 51 conserva
+     sus portadas diseñadas (coverUrl, arriba). */
+  if (book.catalogo && book.gid) {
+    return `<span class="cover-real-wrap">${typo}<img class="cover-real" src="${PORTADA_BASE}${book.gid}" alt="" loading="lazy" onload="this.classList.add('cover-on')" onerror="this.remove()"></span>`;
+  }
+  return typo;
 }
 
 function bookCardHtml(book) {
+  /* r70p1 (pedidos de Sergio): la tarjeta muestra SOLO el título
+     (sin el autor) y lleva arriba a la derecha el botón +/− del
+     estante. El botón va en un envoltorio propio, HERMANO del
+     botón de abrir (nunca dentro: un botón dentro de otro es
+     HTML inválido), para que tocar el signo no abra el libro. */
   const inner = `
-    <span class="cover-box">${coverHtml(book)}</span>
+    <span class="cover-box">${coverHtml(book, false, true)}</span>
     <p class="bt">${esc(book.title)}</p>
-    <p class="ba">${esc(book.author)}</p>
     ${book.hasContent ? "" : `<p class="soon">Próximamente</p>`}`;
-  /* Libro del catálogo que aún no está en la bodega: se muestra
-     pero no se abre (el lector respondería que no está). */
+  const chip = shelfChipHtml(book);
+  /* Libro del catálogo que aún no está en la bodega («Próximamente»):
+     su tarjeta abre la FICHA breve (sin botón de leer), como pidió
+     Sergio; antes ni siquiera se podía tocar. */
   if (book.catalogo && !book.epub) {
-    return `<div class="book-card" aria-label="${esc(book.title)} de ${esc(book.author)} (aún no está en la bodega)">${inner}
-  </div>`;
+    return `<div class="book-card-wrap"><button type="button" class="book-card" data-action="open-book" data-id="${book.id}" aria-label="Ver la ficha de ${esc(book.title)} de ${esc(book.author)} (próximamente)">${inner}
+  </button>${chip}</div>`;
   }
-  return `<button type="button" class="book-card" data-action="open-book" data-id="${book.id}" aria-label="Ver ${esc(book.title)} de ${esc(book.author)}">${inner}
-  </button>`;
+  return `<div class="book-card-wrap"><button type="button" class="book-card" data-action="open-book" data-id="${book.id}" aria-label="Ver ${esc(book.title)} de ${esc(book.author)}">${inner}
+  </button>${chip}</div>`;
 }
 
 const SEARCH_ICON = `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>`;
@@ -466,7 +511,11 @@ function libSectionBodyHtml() {
       </div>`;
       }).join("")}</div>`;
   }
-  let entries = libTab === "favoritos" ? libraryEntries.filter((e) => e.favorite) : libraryEntries;
+  /* r70p1: el estante pinta la biblioteca MEZCLADA — los del
+     servicio (los 51) y los del estante local (catálogo/subidos
+     agregados con el «+») — como una sola. */
+  const allShelf = shelfEntriesAll();
+  let entries = libTab === "favoritos" ? allShelf.filter((e) => e.favorite) : allShelf;
   if (q) entries = entries.filter((e) => bookMatches(e.book, q));
   if (entries.length === 0) {
     if (q) return sinResultados;
@@ -481,7 +530,7 @@ function libSectionBodyHtml() {
       const book = entry.book;
       return `<div>
         ${bookCardHtml(book)}
-        <p class="lib-meta">${entry.finished ? "✓ Terminado" : (entry.currentChapter > 0 || entry.lastReadAt) ? `Capítulo ${entry.currentChapter + 1}` : "Sin empezar"}</p>
+        <p class="lib-meta">${entry.finished ? "✓ Terminado" : entry.local ? (libLocalEnCurso(book) ? "En curso" : "Sin empezar") : (entry.currentChapter > 0 || entry.lastReadAt) ? `Capítulo ${entry.currentChapter + 1}` : "Sin empezar"}</p>
         <div class="lib-actions">
           <button type="button" class="fav${entry.favorite ? " on" : ""}" data-action="lib-fav" data-id="${book.id}" data-fav="${entry.favorite ? "0" : "1"}" aria-label="${entry.favorite ? `Quitar ${esc(book.title)} de favoritos` : `Marcar ${esc(book.title)} como favorito`}">${entry.favorite ? "★" : "☆"}</button>
           <button type="button" class="remove" data-action="lib-remove" data-id="${book.id}" aria-label="Quitar ${esc(book.title)} de tu biblioteca">Quitar</button>
@@ -491,11 +540,13 @@ function libSectionBodyHtml() {
 }
 
 function libraryHtml() {
-  const finishedCount = libraryEntries.filter((e) => e.finished).length;
+  const allShelf = shelfEntriesAll();
+  const finishedCount = allShelf.filter((e) => e.finished).length;
   const tabCard = (t, label) => `<button type="button" class="lib-tabcard${libTab === t ? " active" : ""}" data-action="lib-tab" data-t="${t}" aria-pressed="${libTab === t ? "true" : "false"}">${label}</button>`;
-  return `<div class="view-pad">
+  return `<div class="view-pad lib-view">
     <h1 class="view-title">Tu biblioteca</h1>
-    <p class="small dim mt-1">${libraryEntries.length} ${libraryEntries.length === 1 ? "libro" : "libros"} en tu estante · ${finishedCount} terminados</p>
+    <p class="small dim mt-1">${allShelf.length} ${allShelf.length === 1 ? "libro" : "libros"} en tu estante · ${finishedCount} terminados</p>
+    <p class="small dim" style="margin-top:6px">Agrega libros a esta biblioteca con el botón <strong>+</strong> que lleva cada portada, arriba a la derecha; y quítalos con el botón <strong>−</strong> (al quitar, te pedirá confirmación).</p>
     <div class="lib-rule" aria-hidden="true"></div>
     <div class="lib-split">
       <nav class="lib-side" aria-label="Secciones de tu biblioteca">
@@ -532,7 +583,7 @@ function categoriesHtml() {
         let list = escaparate;
         let esSeleccion = false;
         if (catSelHoy && slug && Array.isArray(catSelHoy.sel[slug]) && catSelHoy.sel[slug].length) {
-          list = catSelHoy.sel[slug].map((a) => catalogBook(a, slug));
+          list = catSelHoy.sel[slug].map((a) => catalogBook(a, slug, slug === "latin" ? "la" : catSelHoy.idioma));
           esSeleccion = true;
         }
         let total = list.length;
@@ -552,10 +603,12 @@ function categoriesHtml() {
       }).join("")}</div>
     </div>`;
   }
-  /* Vista de UNA categoría: los libros del inicio arriba (sin
-     rótulo) y debajo la lista completa del catálogo en el
-     idioma de la cuenta, por páginas (botón «Cargar más»),
-     con su filtro propio. */
+  /* Vista de UNA categoría: ARRIBA DEL TODO, justo bajo el
+     título y el conteo, el filtro propio de la categoría
+     (r71, pedido de Sergio: salía en medio de la pantalla);
+     debajo, los libros del inicio (sin rótulo) y la lista
+     completa del catálogo en el idioma de la cuenta, por
+     páginas (botón «Cargar más»). */
   catEnsureDetail(active);
   const d = catDetail;
   if (!d || d.nombre !== active) {
@@ -577,17 +630,17 @@ function categoriesHtml() {
     <h1 class="view-title center">Categorías</h1>
     <h2 class="font-display" style="margin:12px 0 0;font-size:20px;font-weight:700">${esc(active)}</h2>
     ${conteo}
-    ${d.destacados === null
-      ? `<p class="small dim" style="margin-top:22px">Cargando…</p>`
-      : d.destacados.length === 0
-        ? `<p class="small dim" style="margin-top:22px">Aún no hay libros en tu idioma para mostrar en esta categoría.</p>`
-        : `<div class="grid-books" style="margin-top:22px">${d.destacados.map((book) => bookCardHtml(book)).join("")}</div>`}
-    <form class="searchbox light" role="search" aria-label="Filtrar en ${esc(active)}" data-cat-filter-form style="margin-top:26px;max-width:448px">
+    <form class="searchbox light" role="search" aria-label="Filtrar en ${esc(active)}" data-cat-filter-form style="margin-top:18px;max-width:448px">
       ${SEARCH_ICON}
       <input type="search" aria-label="Filtrar en ${esc(active)} por título o autor" placeholder="Filtra en esta categoría…" value="${esc(d.filtro)}">
       <button type="submit">Filtrar</button>
     </form>
     ${enFiltro ? `<p class="small dim mt-3">${d.filtroTotal} ${d.filtroTotal === 1 ? "resultado" : "resultados"} para «${esc(d.filtro)}» en ${esc(active)} <button type="button" class="btn-ghost" data-action="cat-filter-clear" style="margin-left:8px">Quitar filtro</button></p>` : ""}
+    ${d.destacados === null
+      ? `<p class="small dim" style="margin-top:22px">Cargando…</p>`
+      : d.destacados.length === 0
+        ? `<p class="small dim" style="margin-top:22px">Aún no hay libros en tu idioma para mostrar en esta categoría.</p>`
+        : `<div class="grid-books" style="margin-top:22px">${d.destacados.map((book) => bookCardHtml(book)).join("")}</div>`}
     ${d.error && lista.length === 0 ? `<p class="small mt-4" role="alert">${esc(d.error)}</p>` : ""}
     ${!enFiltro && d.pagina > 0 && d.total === 0
       ? `<p class="small dim mt-4">Aún no hay libros de esta categoría en tu idioma.</p>`
@@ -643,6 +696,61 @@ function detailGateHtml() {
   </div>`;
 }
 
+/* ------------------------- ficha breve del libro (r70p1) ------ */
+
+/* Pedido de Sergio: al tocar una portada ya NO se entra directo
+   al lector: primero aparece una ficha breve — portada, título y
+   una descripción pequeña — con su botón para leer. Ese botón
+   sigue el flujo de siempre (openBook: sin sesión lleva a la
+   puerta de cuenta; sin suscripción sale el aviso «Esto es una
+   prueba»; y de ahí al lector). Los «Próximamente» (sin EPUB)
+   muestran su ficha SIN botón de leer. Sin sesión la ficha se ve
+   igual; su botón de leer lleva a la puerta de cuenta.
+   La descripción se pide al servicio de catálogo por gid
+   (/descripcion) al abrir la ficha — una sola petición pequeña —
+   y trae su origen marcado en el dato: «propia» (la del libro:
+   la ficha de Gutenberg o el dc:description de su EPUB) o
+   «generada» (redactada por la casa). Si un libro aún no tiene
+   descripción, la ficha sale sin ese bloque. */
+const fichaDescCache = new Map();
+function fichaDescLoad(gid) {
+  if (!gid || fichaDescCache.has(gid)) return;
+  fichaDescCache.set(gid, null); /* pedida, aún sin respuesta */
+  catFetch("/descripcion?gid=" + gid).then((d) => {
+    fichaDescCache.set(gid, d && d.descripcion ? d : null);
+    if (view.name === "ficha") {
+      const b = BOOK_BY_ID.get(view.bookId);
+      if (b && b.gid === gid) render();
+    }
+  }).catch(() => { fichaDescCache.set(gid, null); });
+}
+
+function fichaHtml() {
+  const book = BOOK_BY_ID.get(view.bookId);
+  if (!book) return `<div class="view-pad"><p class="small" style="padding-top:40px">Libro no encontrado.</p></div>`;
+  fichaDescLoad(book.gid);
+  const d = fichaDescCache.get(book.gid);
+  const enEstante = shelfHas(book);
+  return `<div class="view-pad">
+    <div class="detail-flex">
+      <div class="detail-cover">${coverHtml(book, true)}</div>
+      <div style="min-width:0">
+        <p class="cat-tag" style="color:${spineColor(book.category)}">${esc(book.category)}</p>
+        <h1 class="detail-title">${esc(book.title)}</h1>
+        <p class="mt-1" style="font-size:15px;color:var(--dim)">${esc(book.author)}</p>
+        ${d ? `<p class="ficha-desc">${esc(d.descripcion)}</p>` : ""}
+        <div class="btn-row">
+          ${book.epub
+            ? `<button type="button" class="btn-primary pad" data-action="ficha-read" data-id="${book.id}">Leer ahora</button>`
+            : `<span class="ficha-soon">Próximamente</span>`}
+          <button type="button" class="btn-ghost" data-action="shelf-toggle" data-id="${book.id}">${enEstante ? "− Quitar de tu biblioteca" : "+ Tu biblioteca"}</button>
+        </div>
+        ${book.epub ? "" : `<p class="small dim" style="margin-top:10px">Este libro todavía no está disponible para leer; su ficha ya se puede consultar.</p>`}
+      </div>
+    </div>
+  </div>`;
+}
+
 function detailHtml() {
   const book = BOOK_BY_ID.get(view.bookId);
   if (!token) return detailGateHtml();
@@ -682,7 +790,7 @@ function detailHtml() {
     </div>
     ${!d.hasContent ? `<section aria-label="Contenido en preparación" class="card brass mt-6">
       <h2 class="font-display" style="margin:0;font-size:16px;font-weight:700">Este libro todavía no tiene su texto cargado</h2>
-      <p class="small dim" style="margin:4px 0 0;line-height:1.625">La portada se muestra como muestra visual del catálogo mientras creamos nuestro servidor propio de libros. Cuando el contenido de este título se cargue desde ahí, podrás leer aquí la muestra gratuita con tu cuenta y el libro completo con suscripción.</p>
+      <p class="small dim" style="margin:4px 0 0;line-height:1.625">Cuando el contenido de este título se cargue en nuestro servidor, podrás leer aquí la muestra gratuita con tu cuenta y el libro completo con suscripción.</p>
     </section>` : ""}
     ${d.hasContent && !d.subscribed ? `<section aria-label="Muestra gratuita y suscripción" class="card brass mt-6">
       <h2 class="font-display" style="margin:0;font-size:16px;font-weight:700">Estás con la muestra gratuita</h2>
@@ -734,7 +842,7 @@ function readerHtml() {
         <p class="reader-kicker">${esc(d.title)}</p>
         <section aria-label="Contenido en preparación" class="card center-card" style="margin-top:24px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1)">
           <h1 class="font-display" style="margin:0;font-size:24px;font-weight:900">Contenido en preparación</h1>
-          <p class="dim" style="margin:12px auto 0;max-width:448px;font-size:15px;line-height:1.625">Este libro todavía no tiene su texto cargado. Su portada se muestra como muestra visual del catálogo mientras creamos nuestro servidor propio de libros; cuando el contenido se cargue desde ahí, podrás leerlo aquí.</p>
+          <p class="dim" style="margin:12px auto 0;max-width:448px;font-size:15px;line-height:1.625">Este libro todavía no tiene su texto cargado. Cuando el contenido se cargue en nuestro servidor, podrás leerlo aquí.</p>
           <button type="button" class="btn-primary block mt-5" style="max-width:320px;margin-left:auto;margin-right:auto" data-action="reader-exit">Volver a la ficha del libro</button>
         </section>
       </article></div>`;
@@ -998,6 +1106,7 @@ function render() {
   else if (view.name === "categories") html = categoriesHtml();
   else if (view.name === "search") html = searchHtml();
   else if (view.name === "detail") html = detailHtml();
+  else if (view.name === "ficha") html = fichaHtml();
   else if (view.name === "reader") html = readerHtml();
   else if (view.name === "epub") html = epubHtml();
   else if (view.name === "account") html = accountHtml();
@@ -1007,9 +1116,20 @@ function render() {
   else if (view.name === "chats") html = chatsViewHtml();
   else if (view.name === "chathist") html = chatHistHtml();
   if (view.name !== "home" && view.name !== "chat" && view.name !== "chathist" && view.name !== "admin-home" && view.name !== "epub") {
-    html += `<footer class="site-footer"><p>Catálogo en preparación: los libros se servirán desde el servidor propio de Magister. Las portadas se muestran como muestra visual del catálogo mientras se carga el contenido.</p></footer>`;
+    html += `<footer class="site-footer"><p>Catálogo en preparación: los libros se servirán desde el servidor propio de Magister.</p></footer>`;
   }
   mainEl.innerHTML = html;
+  /* r71 (pedido de Sergio): la ficha entra con fundido + leve
+     subida SOLO al llegar a ella (cambio de vista o de libro);
+     los repintados de la misma ficha — cuando llega la
+     descripción, al tocar el botón del estante — no repiten la
+     animación y no parpadean. */
+  const viewKeyNow = view.name + "|" + (view.bookId || view.category || "");
+  if (view.name === "ficha" && lastViewKey !== viewKeyNow) {
+    const pad = mainEl.querySelector(".view-pad");
+    if (pad) pad.classList.add("ficha-in");
+  }
+  lastViewKey = viewKeyNow;
   if (view.name === "epub") {
     if (epubOpen && !mainEl.querySelector("#epub-viewer iframe")) destroyEpubReader();
     if (!epubOpen) initEpubReader();
@@ -1069,6 +1189,12 @@ function closeMenu() {
 /* ------------------------------------------- volver (historial) */
 
 function goBack() {
+  /* r71: salir de la ficha con fundido breve, no de golpe. */
+  if (view.name === "ficha") { leaveFichaThen(goBackNow); return; }
+  goBackNow();
+}
+
+function goBackNow() {
   const prev = viewHistory.pop();
   if (prev) { view = prev; render(); window.scrollTo(0, 0); }
   else { viewHistory = []; view = { name: "home" }; render(); window.scrollTo(0, 0); }
@@ -1117,7 +1243,26 @@ function enhancePasswordEyes(scope) {
   });
 }
 
+/* r71: salir de la ficha es un fundido breve (200 ms), no un
+   corte: se marca la salida sobre la ficha pintada y el cambio
+   de vista se aplica al terminar. Los repintados dentro de la
+   misma ficha no pasan por aquí. */
+let fichaLeaving = false;
+function leaveFichaThen(fn) {
+  if (fichaLeaving || !mainEl) { fn(); return; }
+  const pad = mainEl.querySelector(".view-pad");
+  if (!pad) { fn(); return; }
+  fichaLeaving = true;
+  pad.classList.add("ficha-out");
+  setTimeout(() => { fichaLeaving = false; fn(); }, 200);
+}
+
 function go(next, opts) {
+  if (view.name === "ficha" && next.name !== "ficha") { leaveFichaThen(() => goNow(next, opts)); return; }
+  goNow(next, opts);
+}
+
+function goNow(next, opts) {
   if (next.name !== "chat") chatStopPolling();
   if (opts && opts.replace) {
     view = next;
@@ -1181,7 +1326,16 @@ function openBookDirect(bookId) {
     /* Libro con EPUB en la bodega: el lector se abre con ESTE
        libro (el servicio de lectura aplica el modelo de acceso:
        muestra del primer capítulo o libro completo). */
-    epubCurrent = { id: book.id, gid: book.gid, title: book.title, author: book.author, acceso: null };
+    epubCurrent = { id: book.id, gid: book.gid, title: book.title, author: book.author, acceso: null,
+                    /* r70p1: el idioma del libro manda en el lector
+                       (diccionario y traducción se ajustan solos al
+                       abrir). El escaparate no lo declara: español.
+                       Un libro del catálogo hallado por el buscador
+                       global puede venir sin idioma declarado y el
+                       lector conserva entonces el ajuste recordado. */
+                    idioma: book.idioma || (book.catalogo ? null : "es") };
+    epubSelManualDef = false;
+    epubSelManualDict = false;
     recientesAdd(book);
     epubEnsureLibrary(bookId);
     go({ name: "epub" });
@@ -1212,6 +1366,174 @@ function epubEnsureLibrary(bookId) {
     .catch(() => { /* el estante se refresca en la próxima visita */ });
 }
 
+/* --------------------------------- estante: botón +/− (r70p1) */
+
+/* Pedido de Sergio: cada tarjeta lleva arriba a la derecha un
+   «+» para agregar el libro a «Tu biblioteca» y un «−» para
+   quitarlo. Al agregar SOLO avisa una ventana emergente pasajera
+   («Agregado a tu biblioteca»); al quitar PIDE CONFIRMACIÓN
+   antes. El estante tiene hoy dos casas y el botón las respeta:
+   - Los 51 del escaparate viven en la biblioteca del SERVICIO de
+     cuentas (libraryEntries; api.addToLibrary/removeFromLibrary),
+     como hasta ahora — abrirlos también los agrega, como siempre.
+   - Los del catálogo completo y los subidos NO existen para ese
+     servicio (su /library/add responde 404: solo conoce los 51),
+     así que su estante es LOCAL de este aparato y por cuenta
+     (clave con el correo, como los perfiles de Rager): persiste
+     entre visitas y «Tu estante» lo muestra MEZCLADO con el del
+     servicio, como una sola biblioteca. */
+const SHELF_LOCAL_KEY = "magister-estante-v1";
+function shelfLocalKey() {
+  return SHELF_LOCAL_KEY + ":" + String((user && user.email) || "").toLowerCase();
+}
+function shelfLocalGet() {
+  if (!user) return [];
+  try {
+    const a = JSON.parse(window.localStorage.getItem(shelfLocalKey()) || "[]");
+    return Array.isArray(a) ? a.filter((r) => r && typeof r.id === "number") : [];
+  } catch { return []; }
+}
+function shelfLocalSet(list) {
+  try { window.localStorage.setItem(shelfLocalKey(), JSON.stringify(list)); } catch { /* sin almacenamiento */ }
+}
+function shelfHas(book) {
+  if (!book) return false;
+  if (book.catalogo) return shelfLocalGet().some((r) => r.id === book.id);
+  return libraryEntries.some((e) => e.book && e.book.id === book.id);
+}
+function shelfChipHtml(book) {
+  const on = shelfHas(book);
+  return `<button type="button" class="shelf-chip${on ? " on" : ""}" data-action="shelf-toggle" data-id="${book.id}" aria-label="${on ? `Quitar «${esc(book.title)}» de tu biblioteca` : `Agregar «${esc(book.title)}» a tu biblioteca`}">${on ? "−" : "+"}</button>`;
+}
+/* Entradas del estante local con la misma forma que las del
+   servicio, para pintar «Tu estante» y «Favoritos» mezclados. El
+   libro se resuelve del registro local de la página si ya pasó
+   por ella; si no (primera visita tras agregar), del propio
+   récord guardado al agregar. */
+function shelfLocalEntry(r) {
+  let book = BOOK_BY_ID.get(r.id);
+  if (!book) {
+    book = {
+      id: r.id, gid: r.gid, title: r.title, author: r.author,
+      category: r.category || "", hasContent: !!r.epub, epub: !!r.epub,
+      coverUrl: null, catalogo: true, idioma: r.idioma || null,
+    };
+    /* Se registra para que su ficha y su tarjeta resuelvan igual
+       que los libros que ya pasaron por el catálogo en esta visita. */
+    BOOK_BY_ID.set(r.id, book);
+  }
+  return { entryId: r.id, book, favorite: !!r.favorite, currentChapter: 0,
+           finished: false, lastReadAt: null, local: true };
+}
+function shelfEntriesAll() {
+  const local = shelfLocalGet().map(shelfLocalEntry);
+  const server = libraryEntries.map((e) => ({ ...e, local: false }));
+  return [...local, ...server];
+}
+/* Un libro del estante local está «En curso» si el lector guardó
+   posición de lectura en este aparato (la misma señal que usa
+   «Recientes»). */
+function libLocalEnCurso(book) {
+  try { return !!window.localStorage.getItem("magister-epub-pos-" + book.gid); } catch { return false; }
+}
+
+/* Ventana emergente pasajera (vive en <body>, como el aviso de
+   prueba, para sobrevivir a los repintados): solo avisa, no
+   bloquea ni pide nada. */
+let toastTimer = null;
+function showToast(msg) {
+  let el = document.getElementById("mg-toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "mg-toast";
+    el.className = "mg-toast";
+    el.setAttribute("role", "status");
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.hidden = false;
+  void el.offsetWidth; /* fuerza el repintado para que la transición corra siempre */
+  setTimeout(() => el.classList.add("show"), 20);
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.classList.remove("show");
+    setTimeout(() => { el.hidden = true; }, 300);
+  }, 2300);
+}
+
+/* Confirmación al quitar (misma capa y aspecto que el aviso de
+   prueba): quitar un libro del escaparate borra también su
+   avance guardado en el servicio — igual que el «Quitar» que el
+   estante ya tenía — y por eso se confirma siempre. */
+let shelfPendingRemove = null;
+function shelfAskRemove(book) {
+  shelfPendingRemove = book;
+  let el = document.getElementById("shelf-confirm");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "shelf-confirm";
+    el.className = "sample-notice";
+    el.setAttribute("role", "dialog");
+    el.setAttribute("aria-modal", "true");
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<div class="sample-notice-card">
+    <h2 class="font-display" style="margin:0;font-size:19px;font-weight:700">¿Quitar este libro de tu biblioteca?</h2>
+    <p class="small dim" style="margin:10px 0 0;line-height:1.6">«${esc(book.title)}» saldrá de tu estante.</p>
+    <button type="button" class="btn-primary block" style="margin-top:18px" data-action="shelf-remove-ok">Quitar</button>
+    <button type="button" class="btn-ghost sample-notice-skip" data-action="shelf-remove-cancel">Cancelar</button>
+  </div>`;
+  el.hidden = false;
+}
+function shelfHideConfirm() {
+  const el = document.getElementById("shelf-confirm");
+  if (el) el.hidden = true;
+  shelfPendingRemove = null;
+}
+async function shelfRemoveConfirmed() {
+  const book = shelfPendingRemove;
+  shelfHideConfirm();
+  if (!book) return;
+  if (book.catalogo) {
+    shelfLocalSet(shelfLocalGet().filter((r) => r.id !== book.id));
+    render();
+    return;
+  }
+  try {
+    await api.removeFromLibrary(token, book.id);
+    const lib = await api.myLibrary(token);
+    libraryEntries = lib.entries || [];
+  } catch { /* modo muestra */ }
+  render();
+}
+async function shelfToggle(bookId) {
+  /* Sin sesión no hay biblioteca: el signo se comporta como
+     abrir un libro sin cuenta (a la puerta de cuenta). */
+  if (!token) { go({ name: "account" }); return; }
+  const book = BOOK_BY_ID.get(bookId);
+  if (!book) return;
+  if (shelfHas(book)) { shelfAskRemove(book); return; }
+  if (book.catalogo) {
+    const list = shelfLocalGet();
+    if (!list.some((r) => r.id === book.id)) {
+      list.unshift({ id: book.id, gid: book.gid, title: book.title, author: book.author,
+                     category: book.category || "", epub: !!book.epub,
+                     idioma: book.idioma || "", favorite: false, ts: Date.now() });
+      shelfLocalSet(list);
+    }
+    render();
+    showToast("Agregado a tu biblioteca");
+    return;
+  }
+  try {
+    await api.addToLibrary(token, book.id);
+    const lib = await api.myLibrary(token);
+    libraryEntries = lib.entries || [];
+    render();
+    showToast("Agregado a tu biblioteca");
+  } catch { /* si no se agregó, no se avisa */ }
+}
+
 /* ------------------------------------------- recientes (local) */
 
 /* Últimos libros abiertos en el lector, en este dispositivo:
@@ -1230,10 +1552,10 @@ function recientesGet() {
        para que «Recientes» no lo pierda. */
     if (!BOOK_BY_ID.has(r.id) && typeof r.id === "number" && r.id >= 1000000 && r.gid) {
       catalogBook([r.gid, String(r.title || ""), String(r.author || ""), 1],
-                  CAT_SLUGS[r.category] || "clasicos");
+                  CAT_SLUGS[r.category] || "clasicos", r.idioma || null);
     }
     if (!BOOK_BY_ID.has(r.id)) continue;
-    out.push({ id: r.id, gid: r.gid, title: String(r.title || ""), author: String(r.author || ""), category: String(r.category || ""), ts: typeof r.ts === "number" ? r.ts : 0 });
+    out.push({ id: r.id, gid: r.gid, title: String(r.title || ""), author: String(r.author || ""), category: String(r.category || ""), idioma: String(r.idioma || ""), ts: typeof r.ts === "number" ? r.ts : 0 });
     if (out.length >= 10) break;
   }
   return out;
@@ -1241,7 +1563,7 @@ function recientesGet() {
 function recientesAdd(book) {
   try {
     const list = recientesGet().filter((r) => r.gid !== book.gid);
-    list.unshift({ id: book.id, gid: book.gid, title: book.title, author: book.author, category: book.category || "", ts: Date.now() });
+    list.unshift({ id: book.id, gid: book.gid, title: book.title, author: book.author, category: book.category || "", idioma: book.idioma || "", ts: Date.now() });
     window.localStorage.setItem(RECIENTES_KEY, JSON.stringify(list.slice(0, 10)));
   } catch { /* sin almacenamiento */ }
 }
@@ -1757,7 +2079,11 @@ document.addEventListener("click", async (e) => {
     else if (tab === "account") go({ name: "account" }, { replace: true });
     else go({ name: "home" });
   }
-  else if (action === "open-book") openBook(id);
+  /* r70p1: tocar una tarjeta ya no abre el libro directo: abre
+     su ficha breve; el botón «Leer ahora» de la ficha es el que
+     llama a openBook, con todo el flujo de siempre. */
+  else if (action === "open-book") go({ name: "ficha", bookId: id });
+  else if (action === "ficha-read") openBook(id);
   else if (action === "select-category") go({ name: "categories", category: el.dataset.cat });
   else if (action === "back-categories") goBack();
   else if (action === "goto-categories") go({ name: "categories" });
@@ -1849,11 +2175,26 @@ document.addEventListener("click", async (e) => {
   else if (action === "font-inc") { readerFontSize = Math.min(26, readerFontSize + 1); render(); }
   else if (action === "font-dec") { readerFontSize = Math.max(15, readerFontSize - 1); render(); }
   else if (action === "lib-tab") { libTab = ["favoritos", "recientes"].includes(el.dataset.t) ? el.dataset.t : "estante"; render(); }
+  else if (action === "shelf-toggle") shelfToggle(id);
+  else if (action === "shelf-remove-ok") shelfRemoveConfirmed();
+  else if (action === "shelf-remove-cancel") shelfHideConfirm();
   else if (action === "lib-remove") {
-    try { await api.removeFromLibrary(token, id); const lib = await api.myLibrary(token); libraryEntries = lib.entries || []; render(); } catch { /* modo muestra */ }
+    /* r70p1: «Quitar» del estante es el mismo gesto que el «−»
+       de la tarjeta: pide la misma confirmación antes de borrar
+       (del servicio o del estante local, según el libro). */
+    const book = BOOK_BY_ID.get(id);
+    if (book) shelfAskRemove(book);
   }
   else if (action === "lib-fav") {
-    try { await api.toggleFavorite(token, id, el.dataset.fav === "1"); const lib = await api.myLibrary(token); libraryEntries = lib.entries || []; render(); } catch { /* modo muestra */ }
+    const book = BOOK_BY_ID.get(id);
+    if (book && book.catalogo) {
+      const list = shelfLocalGet();
+      const rec = list.find((r) => r.id === id);
+      if (rec) { rec.favorite = el.dataset.fav === "1"; shelfLocalSet(list); }
+      render();
+    } else {
+      try { await api.toggleFavorite(token, id, el.dataset.fav === "1"); const lib = await api.myLibrary(token); libraryEntries = lib.entries || []; render(); } catch { /* modo muestra */ }
+    }
   }
   else if (action === "detail-add") {
     try { await api.addToLibrary(token, id); openBook(id); } catch { /* modo muestra */ }
@@ -2158,7 +2499,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r70";
+const EPUB_BUILD = "r71";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -6858,8 +7199,47 @@ const EPUB_DEFSEL_KEY = "magister-epub-defsel-v1";
 const EPUB_DEF_LANG_NAMES = { es: "español", en: "inglés", ca: "catalán", de: "alemán", fr: "francés", it: "italiano", pt: "portugués", la: "latín" };
 let epubDefSources = null;
 
+/* r70p1 (pedido de Sergio): «que el lector reconozca el idioma
+   del libro y establezca el diccionario en base a ese idioma».
+   Al abrir un libro, epubCurrent.idioma manda: el diccionario de
+   definiciones pasa a ser el de ESE idioma y las fuentes de
+   traducción ofrecidas, las que nacen de ese idioma, con la
+   opción por defecto hacia el idioma de preferencia del usuario.
+   Diccionario por idioma del libro: para catalán NO hay
+   diccionario de definiciones (sin fuente, ya documentado) y se
+   cae al de español. En latín manda «Magister Latín-Español»
+   (magister-latin-es), el de la casa, que trae las fichas de
+   partes principales y sigue las formas al lema (r71, pedido
+   de Sergio: el Latín-Español suelto del Wikcionario,
+   «latin-es», se retira del servicio; si la elección guardada
+   de un aparato aún dice «latin-es», se trata como el
+   Magister: ver la normalización en epubDefSelGet).
+   Los selectores se siguen pudiendo cambiar a mano dentro de la
+   sesión (las banderas epubSelManual* lo recuerdan); al abrir
+   OTRO libro, el ajuste se rehace para ese libro. */
+const EPUB_DEF_POR_IDIOMA = { es: "wikcionario", en: "wikcionario-en", fr: "wikcionario-fr", de: "wikcionario-de", it: "wikcionario-it", pt: "wikcionario-pt", la: "magister-latin-es", ca: "wikcionario" };
+let epubSelManualDef = false;
+let epubSelManualDict = false;
+function epubBookLang() { return (epubCurrent && epubCurrent.idioma) || null; }
+
 function epubDefSelGet() {
-  try { return window.localStorage.getItem(EPUB_DEFSEL_KEY) || "wikcionario"; } catch { return "wikcionario"; }
+  /* El valor EFECTIVO: con un libro abierto y sin cambio manual
+     en esta sesión de lectura, manda el diccionario del idioma
+     del libro; si no, la elección recordada de siempre. Todas las
+     consultas (epubDictLocal, epubFetchDefs, la línea de fuente)
+     leen de aquí, así que el ajuste es el que de verdad se usa. */
+  if (!epubSelManualDef) {
+    const lang = epubBookLang();
+    const auto = lang ? EPUB_DEF_POR_IDIOMA[lang] : null;
+    if (auto) return auto;
+  }
+  try {
+    const v = window.localStorage.getItem(EPUB_DEFSEL_KEY) || "wikcionario";
+    /* r71: «latin-es» (el Latín-Español del Wikcionario) se
+       retiró del servicio: una elección guardada con ese id se
+       trata como el «Magister Latín-Español». */
+    return v === "latin-es" ? "magister-latin-es" : v;
+  } catch { return "wikcionario"; }
 }
 
 async function epubDefSourcesLoad() {
@@ -6911,6 +7291,7 @@ async function epubDefSelSync() {
     sel.__mgDefSelHook = true;
     sel.addEventListener("click", (e) => { e.stopPropagation(); });
     sel.addEventListener("change", () => {
+      epubSelManualDef = true; /* cambio a mano: manda en esta sesión de lectura */
       try { window.localStorage.setItem(EPUB_DEFSEL_KEY, sel.value); } catch { /* sin almacenamiento */ }
       epubDefSrcSync();
       if (!epubWsTransOnly) epubWsLoadMeaning();
@@ -6959,18 +7340,43 @@ async function epubDictSelSync() {
   const sel = document.getElementById("epub-ws-dict");
   if (!sel) return;
   const sources = await epubDictSourcesLoad();
-  const wanted = epubDictSelGet();
-  sel.innerHTML = sources.map((f) => {
-    const lang = EPUB_LANG_NAMES[f.destino] || f.destino || "";
+  /* r70p1: con un libro abierto, las fuentes ofrecidas son las
+     que nacen del idioma DEL LIBRO (las de hoy solo nacen del
+     español y del inglés: para un libro en otro idioma no hay
+     fuentes de su origen y el selector conserva la lista
+     completa, como siempre). La opción por defecto traduce del
+     idioma del libro al de preferencia del usuario (su cuenta;
+     si no, español). */
+  const lang = epubBookLang();
+  let pool = sources;
+  if (lang && sources.some((f) => f.origen === lang)) {
+    pool = sources.filter((f) => f.origen === lang);
+  }
+  sel.innerHTML = pool.map((f) => {
+    const dl = EPUB_LANG_NAMES[f.destino] || f.destino || "";
     const nombre = f.nombre || f.id;
-    const label = lang && !nombre.toLowerCase().includes(lang) ? nombre + " · " + lang : nombre;
+    const label = dl && !nombre.toLowerCase().includes(dl) ? nombre + " · " + dl : nombre;
     return `<option value="${esc(f.id)}">${esc(label)}</option>`;
   }).join("");
-  sel.value = sources.some((f) => f.id === wanted) ? wanted
-    : (sources.some((f) => f.id === "google-en") ? "google-en" : (sources[0] ? sources[0].id : ""));
+  const guardada = epubDictSelGet();
+  let wanted;
+  if (epubSelManualDict && pool.some((f) => f.id === guardada)) {
+    wanted = guardada; /* la que el usuario eligió a mano en esta lectura */
+  } else if (!epubSelManualDict && lang && pool !== sources) {
+    const dest = (user && user.idioma) || "es";
+    wanted = (pool.find((f) => f.destino === dest && f.tipo === "en_linea") ||
+              pool.find((f) => f.destino === dest) ||
+              pool.find((f) => f.id === "google-en") ||
+              pool[0] || {}).id || "";
+  } else {
+    wanted = pool.some((f) => f.id === guardada) ? guardada
+      : (pool.some((f) => f.id === "google-en") ? "google-en" : (pool[0] ? pool[0].id : ""));
+  }
+  sel.value = wanted;
   if (!sel.__mgDictHook) {
     sel.__mgDictHook = true;
     sel.addEventListener("change", () => {
+      epubSelManualDict = true; /* cambio a mano: manda en esta sesión de lectura */
       try { window.localStorage.setItem(EPUB_DICTSEL_KEY, sel.value); } catch { /* sin almacenamiento */ }
     });
   }
