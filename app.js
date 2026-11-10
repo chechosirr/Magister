@@ -386,6 +386,25 @@ function errorText(e) { return e instanceof Error ? e.message : String(e); }
 
 const PORTADA_BASE = "https://puente.ragerservices.net/magister/portada/";
 
+/* r72: si la portada real falla una vez (un bache del servicio o de la
+   red del teléfono), la tarjeta no queda condenada a la portada
+   generada: se reintenta con esperas (1,2 s · 3 s · 6 s) y solo tras el
+   tercer fallo se retira la imagen. Un 404 de verdad (el libro aún no
+   tiene portada extraída) recorre los reintentos y acaba igual en la
+   generada, como hasta ahora. */
+function coverImgError(img) {
+  const n = Number(img.dataset.reintentos || 0);
+  if (n >= 3) { img.remove(); return; }
+  img.dataset.reintentos = String(n + 1);
+  const esperas = [1200, 3000, 6000];
+  window.setTimeout(() => {
+    if (!img.isConnected) return;
+    const src = img.getAttribute("src") || "";
+    img.removeAttribute("src");
+    img.setAttribute("src", src);
+  }, esperas[n] || 3000);
+}
+
 function coverHtml(book, large = false, soloTitulo = false) {
   if (book.coverUrl) {
     return `<img src="${book.coverUrl}" alt="Portada de ${esc(book.title)}" class="cover-img" loading="lazy">`;
@@ -416,7 +435,7 @@ function coverHtml(book, large = false, soloTitulo = false) {
      los listados no se bloquean. El escaparate de los 51 conserva
      sus portadas diseñadas (coverUrl, arriba). */
   if (book.catalogo && book.gid) {
-    return `<span class="cover-real-wrap">${typo}<img class="cover-real" src="${PORTADA_BASE}${book.gid}" alt="" loading="lazy" onload="this.classList.add('cover-on')" onerror="this.remove()"></span>`;
+    return `<span class="cover-real-wrap">${typo}<img class="cover-real" src="${PORTADA_BASE}${book.gid}" alt="" loading="lazy" onload="this.classList.add('cover-on')" onerror="coverImgError(this)"></span>`;
   }
   return typo;
 }
@@ -2499,7 +2518,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r71";
+const EPUB_BUILD = "r72";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_SET_KEY = "magister-epub-settings";
 const EPUB_HL_KEY = "magister-epub-highlights-v1";
@@ -3555,7 +3574,17 @@ function epubThemeCssText(t) {
        anchas quedaban fuera de ese tope y podían desbordar la
        columna. Con el tope al 100 % ningún contenido de un libro
        — subido o de Gutenberg — puede descuadrar la página. */
-    "svg, video, table { max-width: 100% !important; }";
+    "svg, video, table { max-width: 100% !important; }" +
+    /* Silabeo automático (preview r71p1, Opción A de Sergio
+       contra los huecos anchos de la justificación): la palabra
+       larga se parte con guion al final de la línea según el
+       idioma del documento (ver epubStyleContents, que impone
+       el idioma del libro cuando el XHTML no declara el suyo),
+       manteniendo el texto justificado. La partición es solo
+       visual: el texto no se toca, así que la selección de
+       palabra para el diccionario sigue recibiendo la palabra
+       entera. Los títulos (h1–h3) quedan fuera a propósito. */
+    "body, p, li, blockquote, td, div { -webkit-hyphens: auto !important; hyphens: auto !important; }";
 }
 
 function epubApplyThemeToDoc(contents) {
@@ -3575,6 +3604,20 @@ function epubStyleContents(contents) {
   epubApplyThemeToDoc(contents);
   const doc = contents && contents.document;
   if (!doc || !doc.head) return;
+  /* Silabeo (preview r71p1): `hyphens: auto` solo parte si el
+     documento declara su idioma. Si el XHTML del libro trae su
+     propio lang/xml:lang se respeta; si no trae ninguno, se
+     impone el idioma del libro (el que el lector ya conoce
+     desde la r71: epubBookLang). Se hace aquí, en el gancho de
+     contenido, antes de que la sección se pagine. */
+  try {
+    const root = doc.documentElement;
+    const decl = ((root.getAttribute("lang") || root.getAttribute("xml:lang") || "") + "").trim();
+    if (!decl) {
+      const bl = (typeof epubBookLang === "function" ? epubBookLang() : null) || (epubCurrent && epubCurrent.idioma) || "";
+      if (bl) root.setAttribute("lang", bl);
+    }
+  } catch { /* documento sin raíz accesible: sin silabeo en esta sección */ }
   /* Selección: epub.js avisa con su evento «selected», pero en
      táctil (iOS) la selección se consolida tras soltar los
      tiradores; estos escuchas propios con espera cubren ese caso
