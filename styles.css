@@ -1083,6 +1083,12 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
   font-size: 14px; font-weight: 500; color: #f2f2f4; cursor: pointer;
 }
 
+/* Títulos y subtítulos del índice se distinguen por color
+   (pedido de Sergio, 2026-11-11): títulos en amarillo,
+   subtítulos en blanco. */
+.epub-toc-item.toc-n1 { color: #ffd94d; }
+.epub-toc-item.toc-n2 { color: #ffffff; }
+
 .epub-toc-empty { margin: 4px 0; font-size: 13px; color: rgba(245,245,247,0.65); }
 
 /* Tarjeta del diccionario: hoja inferior dentro del lector */

@@ -3709,7 +3709,14 @@ function epubThemeCssText(t) {
        visual: el texto no se toca, así que la selección de
        palabra para el diccionario sigue recibiendo la palabra
        entera. Los títulos (h1–h3) quedan fuera a propósito. */
-    "body, p, li, blockquote, td, div { -webkit-hyphens: auto !important; hyphens: auto !important; }";
+    "body, p, li, blockquote, td, div { -webkit-hyphens: auto !important; hyphens: auto !important; }" +
+    /* El índice que el conversor deja en una página del libro
+       distingue títulos de subtítulos por color (pedido de
+       Sergio, 2026-11-11): títulos en amarillo (ámbar oscuro
+       en los temas claros, para que se lea) y subtítulos en
+       el color del texto del tema (blanco en el oscuro). */
+    "div.indice-nuestro li.ni1 { color: " + (t.ink === "#ffffff" ? "#ffd94d" : "#a87400") + " !important; }" +
+    "div.indice-nuestro li.ni2, div.indice-nuestro li.ni3 { color: " + t.ink + " !important; }";
 }
 
 function epubApplyThemeToDoc(contents) {
@@ -7051,10 +7058,10 @@ function epubFillToc(toc) {
     return;
   }
   const flat = [];
-  const walk = (items) => { for (const it of items) { flat.push(it); if (it.subitems && it.subitems.length) walk(it.subitems); } };
-  walk(toc);
-  list.innerHTML = flat.map((it) =>
-    `<button type="button" class="epub-toc-item" data-action="epub-toc-go" data-href="${esc(it.href)}">${esc(String(it.label || "").trim())}</button>`
+  const walk = (items, niv) => { for (const it of items) { flat.push({ it, niv }); if (it.subitems && it.subitems.length) walk(it.subitems, niv + 1); } };
+  walk(toc, 0);
+  list.innerHTML = flat.map(({ it, niv }) =>
+    `<button type="button" class="epub-toc-item ${niv === 0 ? "toc-n1" : "toc-n2"}" data-action="epub-toc-go" data-href="${esc(it.href)}">${esc(String(it.label || "").trim())}</button>`
   ).join("");
   /* r80p1: si alguna sección se rindió antes de que llegara el
      índice del libro, se le aplican ahora los saltos de
