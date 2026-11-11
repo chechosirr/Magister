@@ -451,10 +451,18 @@ function bookCardHtml(book, opts) {
      (estante, favoritos y recientes, con la condición
      entry.finished de siempre); el escaparate y las categorías
      llaman sin opts y sus tarjetas no cambian. */
-  const banda = (opts && opts.terminado)
+  /* r76 (pedido de Sergio): la tarjeta lleva arriba a la izquierda
+     el % leído (la página en la que el cliente salió del libro) y
+     al llegar al 100 % sale la banda «Terminado» en su lugar. El
+     avance se lee del registro del aparato (avanceDe); opts.terminado
+     de las vistas de «Tu biblioteca» se sigue honrando. */
+  const av = avanceDe(book.gid);
+  const banda = ((opts && opts.terminado) || av >= 100)
     ? `<span class="term-band">Terminado</span>` : "";
+  const pctChip = (av > 0 && av < 100)
+    ? `<span class="pct-chip">${av}&nbsp;%</span>` : "";
   const inner = `
-    <span class="cover-box">${coverHtml(book, false, true)}${banda}</span>
+    <span class="cover-box">${coverHtml(book, false, true)}${pctChip}${banda}</span>
     <p class="bt">${esc(book.title)}</p>
     ${book.hasContent ? "" : `<p class="soon">Próximamente</p>`}`;
   const chip = shelfChipHtml(book);
@@ -560,7 +568,7 @@ function libSectionBodyHtml() {
       const book = entry.book;
       return `<div>
         ${bookCardHtml(book, { terminado: !!entry.finished })}
-        <p class="lib-meta">${entry.finished ? "✓ Terminado" : entry.local ? (libLocalEnCurso(book) ? "En curso" : "Sin empezar") : (entry.currentChapter > 0 || entry.lastReadAt) ? `Capítulo ${entry.currentChapter + 1}` : "Sin empezar"}</p>
+        <p class="lib-meta">${entry.finished ? "✓ Terminado" : entry.local ? (libLocalEnCurso(book) ? `En curso${entry.pct ? " · " + entry.pct + " %" : ""}` : "Sin empezar") : (entry.currentChapter > 0 || entry.lastReadAt) ? `Capítulo ${entry.currentChapter + 1}` : "Sin empezar"}</p>
         <div class="lib-actions">
           <button type="button" class="fav${entry.favorite ? " on" : ""}" data-action="lib-fav" data-id="${book.id}" data-fav="${entry.favorite ? "0" : "1"}" aria-label="${entry.favorite ? `Quitar ${esc(book.title)} de favoritos` : `Marcar ${esc(book.title)} como favorito`}">${entry.favorite ? "★" : "☆"}</button>
           <!-- r75 (Sergio, foto-114): fuera el botón de texto «Quitar»
@@ -1429,6 +1437,39 @@ function shelfLocalGet() {
 function shelfLocalSet(list) {
   try { window.localStorage.setItem(shelfLocalKey(), JSON.stringify(list)); } catch { /* sin almacenamiento */ }
 }
+
+/* r76 (pedido de Sergio): el avance de lectura por libro — el %
+   sale de la página en la que el cliente sale del libro: el lector
+   lo anota cada vez que guarda la posición (misma página, mismo
+   instante), por cuenta y en este aparato, en la misma casa que la
+   posición y el estante local. Al 100 % el libro queda terminado
+   y su tarjeta lleva la banda en vez del %. */
+const AVANCE_KEY = "magister-avance-v1";
+function avanceKey() {
+  return AVANCE_KEY + ":" + String((user && user.email) || "").toLowerCase();
+}
+function avanceMap() {
+  if (!user) return {};
+  try {
+    const m = JSON.parse(window.localStorage.getItem(avanceKey()) || "{}");
+    return (m && typeof m === "object" && !Array.isArray(m)) ? m : {};
+  } catch { return {}; }
+}
+function avanceDe(gid) {
+  if (!gid) return 0;
+  const v = avanceMap()[String(gid)];
+  return (typeof v === "number" && isFinite(v)) ? Math.max(0, Math.min(100, Math.round(v))) : 0;
+}
+function avanceGuardar(gid, pct) {
+  if (!user || !gid) return;
+  const p = Math.max(0, Math.min(100, Math.round(pct)));
+  try {
+    const m = avanceMap();
+    if (m[String(gid)] === p) return;
+    m[String(gid)] = p;
+    window.localStorage.setItem(avanceKey(), JSON.stringify(m));
+  } catch { /* sin almacenamiento */ }
+}
 function shelfHas(book) {
   if (!book) return false;
   if (book.catalogo) return shelfLocalGet().some((r) => r.id === book.id);
@@ -1455,12 +1496,16 @@ function shelfLocalEntry(r) {
        que los libros que ya pasaron por el catálogo en esta visita. */
     BOOK_BY_ID.set(r.id, book);
   }
+  const av = avanceDe(r.gid);
   return { entryId: r.id, book, favorite: !!r.favorite, currentChapter: 0,
-           finished: false, lastReadAt: null, local: true };
+           finished: av >= 100, pct: av, lastReadAt: null, local: true };
 }
 function shelfEntriesAll() {
   const local = shelfLocalGet().map(shelfLocalEntry);
-  const server = libraryEntries.map((e) => ({ ...e, local: false }));
+  const server = libraryEntries.map((e) => {
+    const av = e.book ? avanceDe(e.book.gid) : 0;
+    return { ...e, local: false, pct: av, finished: !!e.finished || av >= 100 };
+  });
   return [...local, ...server];
 }
 /* Un libro del estante local está «En curso» si el lector guardó
@@ -2563,7 +2608,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r75";
+const EPUB_BUILD = "r77";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_RETURN_KEY = "magister-epub-vuelta";
 const EPUB_SET_KEY = "magister-epub-settings";
@@ -3230,6 +3275,13 @@ let epubOpen = false;
    acceso: "completo" | "muestra", según la cabecera del servicio. */
 let epubCurrent = null;
 let epubBytes = null;
+/* r76 (pedido de Sergio: «al entrar al libro está tardando
+   bastante»): los bytes del ÚLTIMO libro abierto se quedan en
+   memoria — salir y volver a entrar al mismo libro ya no lo
+   descarga otra vez (era ~1 s de la apertura en el rig, y más
+   en datos móviles). La caché va atada a la cuenta y a su
+   suscripción: si cambia la cuenta o su acceso, no se reusa. */
+let epubBytesCache = null;
 function epubPosKey() { return EPUB_POS_KEY + "-" + (epubCurrent ? epubCurrent.gid : "sinlibro"); }
 let epubBook = null;
 let epubRendition = null;
@@ -5539,6 +5591,15 @@ async function initEpubReader() {
     return;
   }
   if (seq !== epubInitSeq) return;
+  /* r77 (foto-116 de Sergio: «no carga la barra ni la página al
+     entrar»): la barra nace con el último % conocido — el avance
+     guardado, el mismo de la tarjeta — en vez de muerta al 0 %
+     sin texto mientras se generan las localizaciones; cuando
+     están listas, el % exacto de la página lo confirma. */
+  try {
+    const av = (epubCurrent && epubCurrent.gid) ? avanceDe(epubCurrent.gid) : null;
+    if (typeof av === "number" && av >= 1 && av <= 100 && epubCurrent.acceso === "completo") epubLastPct = Math.round(av);
+  } catch { /* sin avance guardado: la barra espera a las localizaciones */ }
   try {
     await epubOpenWithWatchdog(seq, false);
   } catch (err) {
@@ -5570,6 +5631,14 @@ async function initEpubReader() {
    muestra tal cual: no cae al modo mínimo. */
 async function epubFetchCurrent() {
   if (!token) throw new Error(T("Inicia sesión para leer este libro."));
+  const emailKey = String((user && user.email) || "").toLowerCase();
+  if (epubBytesCache && epubCurrent && epubBytesCache.gid === epubCurrent.gid
+      && epubBytesCache.email === emailKey
+      && epubBytesCache.sub === !!(user && user.subscribed)
+      && epubBytesCache.admin === !!(user && user.admin)) {
+    epubCurrent.acceso = epubBytesCache.acceso;
+    return epubBytesCache.bytes;
+  }
   let res;
   try {
     res = await fetch(MAGISTER_API_BASE + "/leer/" + epubCurrent.gid, {
@@ -5582,7 +5651,38 @@ async function epubFetchCurrent() {
     throw new Error(msg || T("No se pudo abrir el libro."));
   }
   epubCurrent.acceso = res.headers.get("X-Magister-Acceso") || "completo";
-  return res.arrayBuffer();
+  const bytes = await res.arrayBuffer();
+  if (epubCurrent && bytes.byteLength <= 12 * 1024 * 1024) {
+    epubBytesCache = { gid: epubCurrent.gid, email: emailKey,
+      sub: !!(user && user.subscribed), admin: !!(user && user.admin),
+      acceso: epubCurrent.acceso, bytes };
+  }
+  return bytes;
+}
+
+/* r77: las localizaciones se generan UNA vez por ejemplar y se
+   guardan en el aparato (la clave lleva el tamaño en bytes: si
+   el EPUB cambia por debajo, la clave cambia y se regenera).
+   Sin esto, cada apertura de un libro de secciones grandes
+   pasaba 10-30 s generando y la barra quedaba muerta (foto-116).
+   El paso sube de 1200 a 2000 caracteres por localización: la
+   mitad de trabajo y el % se sigue leyendo igual (se redondea). */
+const EPUB_LOC_PASO = 2000;
+function epubLocKey() {
+  const n = (typeof epubBytes !== "undefined" && epubBytes) ? epubBytes.byteLength : 0;
+  return "magister-loc-v2:" + (epubCurrent ? epubCurrent.gid : "sinlibro") + ":" + n;
+}
+async function epubLocationsCargar(book) {
+  const clave = epubLocKey();
+  try {
+    const guardadas = window.localStorage.getItem(clave);
+    if (guardadas) {
+      book.locations.load(JSON.parse(guardadas));
+      if (book.locations.total > 0) return;
+    }
+  } catch { /* caché ilegible: se genera de cero */ }
+  await book.locations.generate(EPUB_LOC_PASO);
+  try { window.localStorage.setItem(clave, book.locations.save()); } catch { /* sin sitio: la próxima apertura regenera */ }
 }
 
 function epubTeardownBook() {
@@ -5776,7 +5876,7 @@ async function epubOpenBook(seq, minimal) {
     .then((nav) => { if (seq === epubInitSeq) epubFillToc(nav && nav.toc ? nav.toc : []); })
     .catch(() => {});
   epubBook.ready
-    .then(() => { if (seq === epubInitSeq && epubBook) return epubBook.locations.generate(1200); })
+    .then(() => { if (seq === epubInitSeq && epubBook) return epubLocationsCargar(epubBook); })
     .then(() => { if (seq === epubInitSeq) { epubUpdateProgress(); epubReturnSyncPct(); } })
     .catch(() => {});
 }
@@ -5830,8 +5930,27 @@ function epubOnRelocated(loc) {
       window.localStorage.setItem(epubPosKey(), loc.start.cfi);
     }
   } catch { /* sin almacenamiento */ }
+  epubAvanceAnotar(loc);
   epubUpdateProgress();
   epubCurlPoolSchedule();
+}
+
+/* r76: anota el avance del libro (el % de la página actual) cada
+   vez que la posición se guarda — al salir del libro, la tarjeta
+   muestra el % de la página en la que salió, y al 100 % la banda
+   «Terminado». SOLO con el libro completo: en la muestra el % sería
+   el de la muestra, no el del libro, y marcaría «Terminado» sin
+   haber leído el libro. El % es el mismo que pinta la barra del
+   lector (percentageFromCfi de la posición guardada). */
+function epubAvanceAnotar(loc) {
+  try {
+    if (!epubCurrent || epubCurrent.acceso !== "completo" || !epubCurrent.gid) return;
+    if (!loc || !loc.start || !loc.start.cfi) return;
+    if (!epubBook || !epubBook.locations || typeof epubBook.locations.percentageFromCfi !== "function") return;
+    if (!(epubBook.locations.total > 0)) return; /* r77: sin localizaciones el % no es real */
+    const p = epubBook.locations.percentageFromCfi(loc.start.cfi);
+    if (typeof p === "number" && isFinite(p) && p >= 0) avanceGuardar(epubCurrent.gid, p * 100);
+  } catch { /* el avance es informativo; nunca rompe la lectura */ }
 }
 
 /* r75 (pedido de Sergio): asa con flechas sobre la barra, en el
@@ -5865,13 +5984,15 @@ function epubUpdateProgress() {
       epubLastPct = pct;
       fill.style.width = pct + "%";
       epubProgHandlePaint(pct);
-      txt.textContent = pct + " % del libro";
+      txt.textContent = pct + " %";
     } else if (epubLastPct >= 0) {
       fill.style.width = epubLastPct + "%";
       epubProgHandlePaint(epubLastPct);
-      txt.textContent = epubLastPct + " % del libro";
+      txt.textContent = epubLastPct + " %";
     } else {
-      txt.textContent = T("Calculando el progreso…");
+      /* r76: debajo de la barra solo van los números y el %
+         (pedido de Sergio); mientras el % aún no existe, vacío. */
+      txt.textContent = "";
     }
   } catch { /* el progreso es informativo; nunca rompe la lectura */ }
 }
@@ -6032,7 +6153,8 @@ function epubReturnRender() {
         f.style.width = snap.frameW + "px";
         f.style.height = snap.frameH + "px";
         f.style.transform = "translateX(" + snap.offX + "px)";
-        if (f.__mgHtml !== snap.html) { f.__mgHtml = snap.html; f.srcdoc = snap.html; }
+        if (f.__mgHtmlMalo === snap.html) { thumb.hidden = true; }
+        else if (f.__mgHtml !== snap.html) { f.__mgHtml = snap.html; f.srcdoc = snap.html; epubThumbVerificar(f, thumb); }
       }
       /* Que la miniatura no se salga por los bordes de la barra. */
       const track = document.getElementById("epub-prog-track");
@@ -6048,6 +6170,28 @@ function epubReturnRender() {
       }
     }
   }
+}
+
+/* r77: la miniatura solo se queda si su foto PINTA de verdad.
+   En el iPhone de Sergio la foto restaurada salía como una
+   tarjeta gris vacía tapando el texto (foto-116); en el banco
+   de pruebas la misma foto sí se lee. Si tras darle tiempo el
+   documento de la foto no tiene texto, se oculta la tarjeta y
+   queda solo el punto, que es lo que devuelve al origen. */
+function epubThumbVerificar(f, thumb) {
+  const html = f.__mgHtml;
+  let intentos = 0;
+  const paso = () => {
+    if (f.__mgHtml !== html || !thumb.isConnected) return;
+    intentos++;
+    let texto = -1;
+    try { const d = f.contentDocument; texto = (d && d.body) ? (d.body.textContent || "").trim().length : -1; } catch { texto = -1; }
+    if (texto > 0) return; /* pintó: la tarjeta se queda */
+    if (intentos < 3) { setTimeout(paso, 700); return; }
+    f.__mgHtmlMalo = html;
+    thumb.hidden = true;
+  };
+  setTimeout(paso, 700);
 }
 
 /* Al abrir el libro: si hay un punto de vuelta guardado y su CFI
@@ -6268,7 +6412,16 @@ function epubScrubUp(e, isCancel) {
   if (Math.abs(frac - S.origin.pct) > 0.002) S.moved = true;
   S.frac = frac;
   epubScrubPaint(frac);
-  epubScrubTo(frac);
+  /* r76 (Sergio: «cada vez que paro la barra hace como un
+     parpadeo toda la hoja»): si el drenaje ya mostró ESTA
+     fracción — el dedo se detuvo un instante antes de soltar,
+     el caso más común —, el display final volvía a renderizar
+     el mismo sitio: en el teléfono esa repaginación de la
+     sección se ve como un parpadeo de toda la hoja sobre una
+     página que ya estaba quieta. Si la página ya está en el
+     destino, no se vuelve a mostrar. */
+  const yaMostrado = S.shown != null && Math.abs(frac - S.shown) <= 0.002;
+  if (!yaMostrado) epubScrubTo(frac);
   const drain = S.drainPromise || epubScrubDrain();
   (async () => {
     /* r75: se espera la PROMESA del drenaje con un tope duro
