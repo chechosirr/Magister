@@ -2608,7 +2608,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r77";
+const EPUB_BUILD = "r78";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_RETURN_KEY = "magister-epub-vuelta";
 const EPUB_SET_KEY = "magister-epub-settings";
@@ -3489,6 +3489,7 @@ function epubHtml() {
     </div>
     <div class="epub-bottom">
       <div class="epub-progress">
+        <div id="epub-prog-hit" aria-hidden="true"></div>
         <div class="progress" id="epub-prog-track" role="progressbar" aria-label="${T("Progreso del libro")}"><div id="epub-prog-fill" style="width:0%"></div></div>
         <div id="epub-prog-handle" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="rgba(15,15,18,0.88)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9.5,5.5 4.5,12 9.5,18.5"/><polyline points="14.5,5.5 19.5,12 14.5,18.5"/></svg></div>
         <div id="epub-return-anchor" hidden>
@@ -5877,7 +5878,7 @@ async function epubOpenBook(seq, minimal) {
     .catch(() => {});
   epubBook.ready
     .then(() => { if (seq === epubInitSeq && epubBook) return epubLocationsCargar(epubBook); })
-    .then(() => { if (seq === epubInitSeq) { epubUpdateProgress(); epubReturnSyncPct(); } })
+    .then(() => { if (seq === epubInitSeq) { epubUpdateProgress(); epubReturnSyncPct(); epubAvanceAnotarActual(); } })
     .catch(() => {});
 }
 
@@ -5953,13 +5954,33 @@ function epubAvanceAnotar(loc) {
   } catch { /* el avance es informativo; nunca rompe la lectura */ }
 }
 
+/* r78: al quedar listas las localizaciones se anota también el
+   avance de la página que está en pantalla: abrir un libro y
+   salir sin pasar página ya deja su % en la tarjeta (antes el
+   avance solo nacía al pasar de página con las localizaciones
+   ya listas). */
+function epubAvanceAnotarActual() {
+  try {
+    const l = (epubRendition && typeof epubRendition.currentLocation === "function") ? epubRendition.currentLocation() : null;
+    if (l) epubAvanceAnotar(l);
+  } catch { /* el avance es informativo; nunca rompe la lectura */ }
+}
+
 /* r75 (pedido de Sergio): asa con flechas sobre la barra, en el
    extremo del relleno, para agarrar el arrastre a la vista. Es
    solo visual (pointer-events:none): el gesto sigue siendo el
    del track y el asa se pinta con el mismo % que el relleno. */
 function epubProgHandlePaint(pct) {
   const h = document.getElementById("epub-prog-handle");
-  if (h) h.style.left = pct + "%";
+  if (!h) return;
+  /* r78: el asa (30 px) viaja con los extremos dentro de la
+     barra: en 0 % y 100 % antes quedaba medio fuera y costaba
+     agarrarla justo ahí. */
+  const cont = h.parentElement;
+  const W = cont ? cont.clientWidth : 0;
+  const p = Math.min(100, Math.max(0, pct));
+  if (W > 36) h.style.left = (18 + (p / 100) * (W - 36)) + "px";
+  else h.style.left = p + "%";
 }
 
 function epubUpdateProgress() {
@@ -6131,7 +6152,10 @@ function epubReturnRender() {
   if (!anchor) return;
   if (!epubReturn || !epubOpen) { anchor.hidden = true; return; }
   anchor.hidden = false;
-  anchor.style.left = (epubReturn.pct * 100) + "%";
+  const contA = anchor.parentElement;
+  const WA = contA ? contA.clientWidth : 0;
+  if (WA > 20) anchor.style.left = Math.min(Math.max(epubReturn.pct * WA, 9), WA - 9) + "px";
+  else anchor.style.left = (epubReturn.pct * 100) + "%";
   const thumb = document.getElementById("epub-return-thumb");
   const snap = epubReturn.snap;
   if (thumb) {
@@ -6312,7 +6336,7 @@ function epubScrubDrain() {
   return run;
 }
 
-function epubScrubBegin(id, origin) {
+function epubScrubBegin(id, origin, clientX) {
   const track = document.getElementById("epub-prog-track");
   if (track) { try { track.setPointerCapture(id); } catch { /* sin captura: los eventos siguen llegando */ } }
   epubScrub = {
@@ -6322,6 +6346,10 @@ function epubScrubBegin(id, origin) {
     frac: origin.pct, pending: null, shown: null,
     draining: false, moved: false, ending: false,
     lastDisplayAt: 0, drainPromise: null,
+    /* r78: recorrido del dedo en píxeles, para distinguir un
+       toque seco (p. ej. sobre el punto de vuelta) de un
+       arrastre que simplemente pasa por ahí. */
+    downX: (typeof clientX === "number") ? clientX : null, devX: 0,
   };
   /* r75: el punto de vuelta nace al instante, SIN serializar
      nada en síncrono. Primero se prueba la foto que el pool ya
@@ -6374,10 +6402,10 @@ function epubScrubDown(e) {
      en cuanto el pase acaba (el dedo sigue puesto) — ver
      epubScrubMove. Si el dedo se levanta antes, no pasó nada. */
   if (epubCurl || epubCurlBusy) {
-    epubScrubPending = { id: e.pointerId, origin: { cfi, pct } };
+    epubScrubPending = { id: e.pointerId, origin: { cfi, pct }, x: e.clientX };
     return;
   }
-  epubScrubBegin(e.pointerId, { cfi, pct });
+  epubScrubBegin(e.pointerId, { cfi, pct }, e.clientX);
 }
 
 function epubScrubMove(e) {
@@ -6387,11 +6415,15 @@ function epubScrubMove(e) {
   if (!epubScrub && epubScrubPending && e.pointerId === epubScrubPending.id && !epubCurl && !epubCurlBusy) {
     const P = epubScrubPending;
     epubScrubPending = null;
-    epubScrubBegin(P.id, P.origin);
+    epubScrubBegin(P.id, P.origin, P.x);
   }
   const S = epubScrub;
   if (!S || S.ending || e.pointerId !== S.id) return;
   const frac = epubScrubFrac(e.clientX);
+  if (typeof S.downX === "number" && typeof e.clientX === "number") {
+    const d = Math.abs(e.clientX - S.downX);
+    if (d > (S.devX || 0)) S.devX = d;
+  }
   S.frac = frac;
   if (Math.abs(frac - S.origin.pct) > 0.002) S.moved = true;
   epubScrubPaint(frac);
@@ -6411,6 +6443,16 @@ function epubScrubUp(e, isCancel) {
   const frac = isCancel ? S.frac : epubScrubFrac(e.clientX);
   if (Math.abs(frac - S.origin.pct) > 0.002) S.moved = true;
   S.frac = frac;
+  /* r78 (foto-117 de Sergio: «le doy y me quiere devolver a la
+     página anterior»): un TOQUE seco — el dedo no se movió —
+     justo sobre el punto de vuelta que había al pulsar cuenta
+     como tocar el punto: saltar a su página exacta. Un arrastre
+     que empiece o pase por el punto ya no lo dispara: es un
+     arrastre normal de la barra. */
+  const devFinal = Math.max(S.devX || 0,
+    (typeof S.downX === "number" && typeof e.clientX === "number") ? Math.abs(e.clientX - S.downX) : 0);
+  const toqueEnMarcador = !isCancel && typeof S.downX === "number" && devFinal <= 12
+    && !!S.previo && Math.abs(frac - S.previo.pct) <= 0.035;
   epubScrubPaint(frac);
   /* r76 (Sergio: «cada vez que paro la barra hace como un
      parpadeo toda la hoja»): si el drenaje ya mostró ESTA
@@ -6421,7 +6463,7 @@ function epubScrubUp(e, isCancel) {
      página que ya estaba quieta. Si la página ya está en el
      destino, no se vuelve a mostrar. */
   const yaMostrado = S.shown != null && Math.abs(frac - S.shown) <= 0.002;
-  if (!yaMostrado) epubScrubTo(frac);
+  if (!toqueEnMarcador && !yaMostrado) epubScrubTo(frac);
   const drain = S.drainPromise || epubScrubDrain();
   (async () => {
     /* r75: se espera la PROMESA del drenaje con un tope duro
@@ -6440,7 +6482,13 @@ function epubScrubUp(e, isCancel) {
     if (epubScrub !== S) return;
     epubScrub = null;
     try {
-      if (!S.moved) {
+      if (toqueEnMarcador) {
+        /* Tocar el punto: se restaura el marcador que había al
+           pulsar (Begin lo había sustituido por el del origen)
+           y se salta a su página exacta; el punto se borra. */
+        epubReturnSet(S.previo);
+        await epubReturnGo();
+      } else if (!S.moved) {
         /* Roce: ni el marcador ni el libro se quedan movidos. */
         if (S.shown != null && Math.abs(S.shown - S.origin.pct) > 0.002) {
           try { await epubDisplayBounded(S.origin.cfi); } catch { /* el libro ya estaba ahí o cerca */ }
@@ -6465,12 +6513,21 @@ function epubScrubAttach() {
     track.addEventListener("pointerup", epubScrubUp);
     track.addEventListener("pointercancel", epubScrubCancel);
   }
-  const anchor = document.getElementById("epub-return-anchor");
-  if (anchor && !anchor.__mgTap) {
-    anchor.__mgTap = true;
-    anchor.addEventListener("pointerdown", (e) => { e.stopPropagation(); e.preventDefault(); });
-    anchor.addEventListener("click", (e) => { e.stopPropagation(); epubReturnGo(); });
+  /* r78: la zona de agarre alta comparte los gestos de la pista:
+     el dedo apunta al asa (30 px) y la pista sola mide 6 px. */
+  const hit = document.getElementById("epub-prog-hit");
+  if (hit && !hit.__mgScrub) {
+    hit.__mgScrub = true;
+    hit.addEventListener("pointerdown", epubScrubDown);
+    hit.addEventListener("pointermove", epubScrubMove);
+    hit.addEventListener("pointerup", epubScrubUp);
+    hit.addEventListener("pointercancel", epubScrubCancel);
   }
+  /* r78: el ancla del punto de vuelta YA no escucha nada (y en
+     CSS es pointer-events:none): antes su pointerdown cortaba el
+     arrastre y su click devolvía a la página marcada cuando
+     Sergio quería agarrar la barra justo ahí (foto-117). El
+     toque seco sobre el punto lo reconoce el propio arrastre. */
 }
 
 function epubFontStep(delta) {

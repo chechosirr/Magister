@@ -829,6 +829,13 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
    en vivo); el gesto es del track, sin scroll ni zoom parásitos. */
 #epub-prog-track { touch-action: none; cursor: pointer; }
 
+/* r78: zona de agarre invisible de 32 px sobre la pista de 6 px:
+   el dedo apunta al asa (30 px) y la pista sola era casi
+   imposible de acertar («es difícil agarrarlo»). No pinta nada,
+   solo recibe el gesto, con los mismos oyentes que la pista. */
+#epub-prog-hit { position: absolute; left: 0; right: 0; top: -13px; height: 32px; z-index: 4; touch-action: none; cursor: pointer; }
+#epub-prog-hit:active ~ #epub-prog-handle { transform: translate(-50%, -50%) scale(1.18); }
+
 /* r75 (pedido de Sergio): asa con doble flecha en el extremo del
    relleno, «una especie de flecha para facilitar el arrastre».
    Disco dorado de 30px centrado sobre la barra (el track mide
@@ -855,6 +862,12 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
    página de origen. Tocar cualquiera de los dos devuelve a esa
    página y el punto se borra. */
 #epub-return-anchor { position: absolute; top: 3px; width: 0; height: 0; z-index: 6; }
+/* r78: el punto y su miniatura son solo pintura: ningún toque
+   cae en ellos. Antes cortaban el arrastre de la barra desde su
+   posición y el toque devolvía a la página marcada cuando se
+   quería agarrar la barra justo ahí; ahora el toque seco sobre
+   el punto lo reconoce el propio gesto de la barra. */
+#epub-return-anchor, #epub-return-thumb, #epub-return-dot { pointer-events: none; }
 #epub-return-anchor[hidden] { display: none; }
 #epub-return-dot {
   position: absolute; left: 0; top: 0; width: 15px; height: 15px;
