@@ -770,6 +770,7 @@ function fichaHtml() {
   const book = BOOK_BY_ID.get(view.bookId);
   if (!book) return `<div class="view-pad"><p class="small" style="padding-top:40px">Libro no encontrado.</p></div>`;
   fichaDescLoad(book.gid);
+  if (book.epub) epubPrecargar(book);
   const d = fichaDescCache.get(book.gid);
   const enEstante = shelfHas(book);
   return `<div class="view-pad">
@@ -2608,7 +2609,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r78";
+const EPUB_BUILD = "r79";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_RETURN_KEY = "magister-epub-vuelta";
 const EPUB_SET_KEY = "magister-epub-settings";
@@ -3596,6 +3597,7 @@ function epubChromeArm() {
 }
 
 function epubChromeShow() {
+  epubVigilarBlanco();
   const sh = document.getElementById("epub-shell");
   if (sh) sh.classList.remove("chrome-off");
   epubChromeArm();
@@ -5630,6 +5632,53 @@ async function initEpubReader() {
    (que aplica el modelo de acceso con la sesión). Un error del
    servicio —sin sesión, muestra no disponible— es definitivo y se
    muestra tal cual: no cae al modo mínimo. */
+/* r79 (pedido de Sergio): mientras el cliente está en la FICHA
+   del libro (su descripción), el libro se precarga ENTERO en
+   segundo plano — la descarga, el ejemplar parseado y las
+   localizaciones — para que al tocar «Leer ahora» la entrada no
+   espere nada y la página guardada salga al instante. La
+   precarga es una sola (la del último libro mirado) y la manda
+   la identidad: si cambian la cuenta o la suscripción, no se
+   adopta. Si algo falla, la apertura normal sigue su curso. */
+let epubPrecarga = null;
+function epubPrecargaValida(gid) {
+  const p = epubPrecarga;
+  if (!p || p.gid !== gid) return null;
+  const emailKey = String((user && user.email) || "").toLowerCase();
+  if (p.email !== emailKey || p.sub !== !!(user && user.subscribed) || p.admin !== !!(user && user.admin)) return null;
+  return p;
+}
+function epubPrecargaDescartar() {
+  if (epubPrecarga && epubPrecarga.book && epubPrecarga.book !== epubBook) {
+    try { epubPrecarga.book.destroy(); } catch { /* ya destruido */ }
+  }
+  epubPrecarga = null;
+}
+async function epubPrecargar(book) {
+  if (!token || !book || !book.epub || !book.gid) return;
+  if (epubPrecargaValida(book.gid)) return;
+  epubPrecargaDescartar();
+  const mio = { gid: book.gid, email: String((user && user.email) || "").toLowerCase(),
+    sub: !!(user && user.subscribed), admin: !!(user && user.admin),
+    acceso: null, bytes: null, book: null, locPromesa: null };
+  epubPrecarga = mio;
+  try {
+    await epubLoadLibs();
+    if (epubPrecarga !== mio) return;
+    const res = await fetch(MAGISTER_API_BASE + "/leer/" + book.gid, {
+      headers: { Authorization: "Bearer " + token },
+    });
+    if (!res.ok) { if (epubPrecarga === mio) epubPrecarga = null; return; }
+    mio.acceso = res.headers.get("X-Magister-Acceso") || "completo";
+    mio.bytes = await res.arrayBuffer();
+    if (epubPrecarga !== mio) return;
+    mio.book = window.ePub(mio.bytes);
+    mio.locPromesa = mio.book.ready.then(() => epubLocationsPreparar(mio.book, mio.gid, mio.bytes.byteLength));
+    mio.book.__mgLocPromesa = mio.locPromesa;
+    mio.locPromesa.catch(() => { /* si fallan aquí, la apertura las prepara */ });
+  } catch { if (epubPrecarga === mio) epubPrecarga = null; }
+}
+
 async function epubFetchCurrent() {
   if (!token) throw new Error(T("Inicia sesión para leer este libro."));
   const emailKey = String((user && user.email) || "").toLowerCase();
@@ -5639,6 +5688,19 @@ async function epubFetchCurrent() {
       && epubBytesCache.admin === !!(user && user.admin)) {
     epubCurrent.acceso = epubBytesCache.acceso;
     return epubBytesCache.bytes;
+  }
+  /* r79: si la ficha precargó este libro, los bytes ya están y
+     la entrada no descarga nada; la precarga alimenta también
+     la caché de bytes para las reaperturas. */
+  const precB = epubPrecargaValida(epubCurrent.gid);
+  if (precB && precB.bytes) {
+    epubCurrent.acceso = precB.acceso || "completo";
+    if (precB.bytes.byteLength <= 12 * 1024 * 1024) {
+      epubBytesCache = { gid: epubCurrent.gid, email: emailKey,
+        sub: !!(user && user.subscribed), admin: !!(user && user.admin),
+        acceso: epubCurrent.acceso, bytes: precB.bytes };
+    }
+    return precB.bytes;
   }
   let res;
   try {
@@ -5669,12 +5731,8 @@ async function epubFetchCurrent() {
    El paso sube de 1200 a 2000 caracteres por localización: la
    mitad de trabajo y el % se sigue leyendo igual (se redondea). */
 const EPUB_LOC_PASO = 2000;
-function epubLocKey() {
-  const n = (typeof epubBytes !== "undefined" && epubBytes) ? epubBytes.byteLength : 0;
-  return "magister-loc-v2:" + (epubCurrent ? epubCurrent.gid : "sinlibro") + ":" + n;
-}
-async function epubLocationsCargar(book) {
-  const clave = epubLocKey();
+async function epubLocationsPreparar(book, gid, numBytes) {
+  const clave = "magister-loc-v2:" + (gid || "sinlibro") + ":" + (numBytes || 0);
   try {
     const guardadas = window.localStorage.getItem(clave);
     if (guardadas) {
@@ -5685,8 +5743,21 @@ async function epubLocationsCargar(book) {
   await book.locations.generate(EPUB_LOC_PASO);
   try { window.localStorage.setItem(clave, book.locations.save()); } catch { /* sin sitio: la próxima apertura regenera */ }
 }
+async function epubLocationsCargar(book) {
+  /* r79: si el libro viene de la precarga de la ficha, sus
+     localizaciones ya están listas o en camino: no se duplica
+     el trabajo, se espera a la misma promesa. */
+  if (book.locations && book.locations.total > 0) return;
+  if (book.__mgLocPromesa) {
+    try { await book.__mgLocPromesa; } catch { /* se prepara abajo */ }
+    if (book.locations.total > 0) return;
+  }
+  await epubLocationsPreparar(book, epubCurrent ? epubCurrent.gid : null,
+    (typeof epubBytes !== "undefined" && epubBytes) ? epubBytes.byteLength : 0);
+}
 
 function epubTeardownBook() {
+  epubDisplayEnVuelo = null;
   if (epubRendition) { try { epubRendition.destroy(); } catch { /* ya destruido */ } epubRendition = null; }
   if (epubBook) { try { epubBook.destroy(); } catch { /* ya destruido */ } epubBook = null; }
   const viewer = document.getElementById("epub-viewer");
@@ -5765,7 +5836,12 @@ function epubZoomGuard() {
    un temporizador y cae al modo mínimo si algo se atasca. */
 const EPUB_CFI_CHECK_MS = 8000;
 const EPUB_DISPLAY_TIMEOUT_MS = 15000;
-const EPUB_OPEN_WATCHDOG_MS = 30000;
+/* r79b: con la puerta de apertura (el lector no se muestra hasta
+   que la página esté pintada y las localizaciones listas, con su
+   tope de 90 s), una apertura viva pero lenta puede tardar más
+   de los 30 s viejos: el vigilante de apertura espera 120 s
+   antes de darla por muerta y caer al modo mínimo. */
+const EPUB_OPEN_WATCHDOG_MS = 120000;
 
 async function epubCfiResuelve(cfi) {
   if (!epubBook || typeof epubBook.getRange !== "function") return true;
@@ -5783,18 +5859,80 @@ async function epubCfiResuelve(cfi) {
   } finally { if (timer) clearTimeout(timer); }
 }
 
-function epubDisplayBounded(target, timeoutMs) {
+/* r79: epub.js procesa los display() EN COLA, uno tras otro, y
+   un display «abandonado» por nuestro límite de tiempo SIGUE
+   corriendo dentro: si el drenaje pedía otro, la cola crecía con
+   posiciones ya viejas y el lector se pasaba medio minuto
+   saltando entre páginas pasadas con el hilo saturado — el
+   «se queda pegado, no responde» de Sergio al mover el cursor
+   muchas veces rápido. Por eso TODO display acotado espera
+   primero a que el anterior termine DE VERDAD dentro de
+   epub.js (con un tope: si aquel está colgado del todo, se
+   sigue igualmente). En epub.js nunca hay más de un display
+   vivo por nuestra cuenta. */
+let epubDisplayEnVuelo = null;
+function epubDisplayCrudo(target) {
+  const p = Promise.resolve(epubRendition.display(target));
+  epubDisplayEnVuelo = p;
+  const fin = () => { if (epubDisplayEnVuelo === p) epubDisplayEnVuelo = null; };
+  p.then(fin, fin);
+  return p;
+}
+async function epubEsperarDisplayEnVuelo(topeMs) {
+  const p = epubDisplayEnVuelo;
+  if (!p) return;
+  let timer = null;
+  try {
+    await Promise.race([
+      p.catch(() => {}),
+      new Promise((r) => { timer = setTimeout(r, topeMs); }),
+    ]);
+  } finally { if (timer) clearTimeout(timer); }
+}
+async function epubDisplayBounded(target, timeoutMs) {
+  await epubEsperarDisplayEnVuelo(6000);
   return new Promise((resolve, reject) => {
     let done = false;
     const timer = setTimeout(() => { if (!done) { done = true; reject(new Error("display-timeout")); } }, timeoutMs || EPUB_DISPLAY_TIMEOUT_MS);
     let p;
-    try { p = epubRendition.display(target); }
+    try { p = epubDisplayCrudo(target); }
     catch (e) { done = true; clearTimeout(timer); reject(e); return; }
     Promise.resolve(p).then(
       (v) => { if (!done) { done = true; clearTimeout(timer); resolve(v); } },
       (e) => { if (!done) { done = true; clearTimeout(timer); reject(e); } }
     );
   });
+}
+
+/* r79b (pedido de Sergio): la apertura NO se da por terminada
+   hasta que la página guardada esté PINTADA de verdad en la
+   vista (contenido real, no solo la promesa del display). Si
+   sale en blanco, se cura aquí dentro — re-mostrar, y a la
+   tercera, salto a la vecina y vuelta — mientras la pantalla
+   sigue diciendo «Abriendo el libro…». Devuelve si quedó
+   pintada; si ni así, la apertura sigue y el vigilante de
+   blanco continúa el trabajo fuera. */
+async function epubEsperarPaginaPintada() {
+  for (let ronda = 0; ronda < 4; ronda++) {
+    await new Promise((r) => setTimeout(r, ronda === 0 ? 350 : 700));
+    if (!epubVistaEnBlanco()) return true;
+    let cfi = null;
+    try { const l = epubRendition.currentLocation(); cfi = l && l.start ? l.start.cfi : null; } catch { cfi = null; }
+    if (!cfi) return false;
+    try {
+      if (ronda < 2) {
+        await epubDisplayBounded(cfi);
+      } else {
+        const seccion = (epubBook.spine && typeof epubBook.spine.get === "function") ? epubBook.spine.get(cfi) : null;
+        const items = (epubBook.spine && epubBook.spine.spineItems) || [];
+        const idx = seccion ? items.indexOf(seccion) : -1;
+        const vecino = idx >= 0 ? (items[idx + 1] || items[idx - 1]) : null;
+        if (vecino && vecino.href) await epubDisplayBounded(vecino.href);
+        await epubDisplayBounded(cfi);
+      }
+    } catch { /* la ronda siguiente vuelve a mirar */ }
+  }
+  return !epubVistaEnBlanco();
 }
 
 async function epubOpenWithWatchdog(seq, minimal) {
@@ -5814,7 +5952,12 @@ async function epubOpenBook(seq, minimal) {
   const loading = document.getElementById("epub-loading");
   await epubLoadLibs();
   if (seq !== epubInitSeq || view.name !== "epub") throw new Error("apertura cancelada");
-  epubBook = window.ePub(epubBytes);
+  /* r79: si la ficha precargó este libro, se adopta su ejemplar
+     ya parseado (localizaciones listas o en camino) y la entrada
+     solo tiene que mostrar la página guardada. */
+  const precL = epubCurrent ? epubPrecargaValida(epubCurrent.gid) : null;
+  if (precL && precL.book) { epubBook = precL.book; epubPrecarga = null; }
+  else epubBook = window.ePub(epubBytes);
   epubRendition = epubBook.renderTo("epub-viewer", {
     width: "100%", height: "100%", flow: "paginated", spread: "none",
   });
@@ -5826,6 +5969,17 @@ async function epubOpenBook(seq, minimal) {
     try { raw = contents.window.getSelection().toString(); } catch { raw = ""; }
     if (raw && raw.trim()) epubOnSelected(raw, cfiRange);
   });
+  /* r79b: las cadenas del índice y de las localizaciones se
+     lanzan ya, antes del primer display, para poder ESPERAR a
+     que el libro esté cargado entero antes de abrir el lector
+     (ver la puerta de apertura más abajo). */
+  epubBook.loaded.navigation
+    .then((nav) => { if (seq === epubInitSeq) epubFillToc(nav && nav.toc ? nav.toc : []); })
+    .catch(() => {});
+  const locListas = epubBook.ready
+    .then(() => { if (seq === epubInitSeq && epubBook) return epubLocationsCargar(epubBook); })
+    .then(() => { if (seq === epubInitSeq) { epubUpdateProgress(); epubReturnSyncPct(); epubAvanceAnotarActual(); } })
+    .catch(() => {});
   let startAt;
   if (!minimal) {
     try { startAt = window.localStorage.getItem(epubPosKey()) || undefined; } catch { startAt = undefined; }
@@ -5853,6 +6007,30 @@ async function epubOpenBook(seq, minimal) {
     await epubDisplayBounded(undefined);
   }
   if (seq !== epubInitSeq) throw new Error("apertura cancelada");
+  /* r79b (pedido de Sergio: «mientras el libro no haya cargado
+     bien ni hayas cargado bien la página en la que se
+     encontraba no lo abras; mantente en la página que dice
+     Abriendo el libro»): la cortina de carga se queda hasta
+     que (a) la página guardada esté pintada de verdad y
+     (b) en la apertura completa, el libro haya cargado entero
+     con sus localizaciones — sin localizaciones la barra no
+     puede saltar y el lector entraría a medias. La espera de
+     localizaciones tiene un tope muy generoso (90 s) para que
+     un libro patológico no deje la cortina eterna; el caso
+     normal (precarga de la ficha o caché del aparato) tarda
+     un instante. */
+  await epubEsperarPaginaPintada();
+  if (!minimal) {
+    let tLoc = null;
+    try {
+      await Promise.race([
+        locListas,
+        new Promise((r) => { tLoc = setTimeout(r, 90000); }),
+      ]);
+    } finally { if (tLoc) clearTimeout(tLoc); }
+  }
+  if (seq !== epubInitSeq) throw new Error("apertura cancelada");
+  epubBlancoIntentos.clear();
   if (loading) loading.hidden = true;
   const muestraNote = document.getElementById("epub-muestra-note");
   if (muestraNote) muestraNote.hidden = !(epubCurrent && epubCurrent.acceso === "muestra");
@@ -5873,13 +6051,6 @@ async function epubOpenBook(seq, minimal) {
   epubSheetSync();
   epubChromeShow();
   epubCurlPoolSchedule();
-  epubBook.loaded.navigation
-    .then((nav) => { if (seq === epubInitSeq) epubFillToc(nav && nav.toc ? nav.toc : []); })
-    .catch(() => {});
-  epubBook.ready
-    .then(() => { if (seq === epubInitSeq && epubBook) return epubLocationsCargar(epubBook); })
-    .then(() => { if (seq === epubInitSeq) { epubUpdateProgress(); epubReturnSyncPct(); epubAvanceAnotarActual(); } })
-    .catch(() => {});
 }
 
 function destroyEpubReader() {
@@ -5893,6 +6064,8 @@ function destroyEpubReader() {
   epubInitSeq++;
   epubDictSeq++;
   epubOpen = false;
+  epubBlancoIntentos.clear();
+  if (epubBlancoTimer) { clearTimeout(epubBlancoTimer); epubBlancoTimer = null; }
   epubViewportUnlock();
   epubLastPct = -1;
   epubSel = null;
@@ -5934,6 +6107,82 @@ function epubOnRelocated(loc) {
   epubAvanceAnotar(loc);
   epubUpdateProgress();
   epubCurlPoolSchedule();
+  if (!epubScrub) epubVigilarBlanco();
+}
+
+/* r79 (Sergio: «cuando paso rápido la barra y me sale en blanco,
+   muchas veces no carga y se queda pegada»): en el teléfono, un
+   salto rápido puede dejar la sección a medio pintar y epub.js
+   no vuelve a intentarlo: la página se queda en blanco para
+   siempre. Este vigilante comprueba, ya con el lector quieto,
+   que la vista viva tenga contenido de verdad; si está en
+   blanco, vuelve a mostrar la página actual y, si sigue, recarga
+   su sección entera. Máximo 3 intentos por página, con curas que
+   escalan, para no
+   pelear con un libro que tenga una hoja en blanco de verdad. */
+const epubBlancoIntentos = new Map();
+let epubBlancoTimer = null;
+function epubVistaEnBlanco() {
+  const frames = document.querySelectorAll("#epub-viewer iframe");
+  if (!frames.length) return false;
+  let algunoConContenido = false;
+  frames.forEach((f) => {
+    try {
+      const d = f.contentDocument;
+      if (d && d.body) {
+        const texto = (d.body.textContent || "").trim().length;
+        const imagenes = d.body.querySelectorAll("img, svg, image").length;
+        if (texto > 0 || imagenes > 0) algunoConContenido = true;
+      }
+    } catch { algunoConContenido = true; /* si no se puede mirar, no se toca */ }
+  });
+  return !algunoConContenido;
+}
+function epubVigilarBlanco() {
+  if (epubBlancoTimer) clearTimeout(epubBlancoTimer);
+  epubBlancoTimer = setTimeout(() => epubBlancoPaso(false), 900);
+}
+function epubBlancoPaso(segunda) {
+  epubBlancoTimer = null;
+  (async () => {
+    if (!epubOpen || epubMinimal || !epubBook || !epubRendition) return;
+    if (epubScrub || epubCurl || epubCurlBusy) { epubVigilarBlanco(); return; }
+    if (!epubVistaEnBlanco()) {
+      /* Limpio a la primera: una segunda mirada más tarde, por
+         si la sección termina de fallar con retraso. */
+      if (!segunda) epubBlancoTimer = setTimeout(() => epubBlancoPaso(true), 2100);
+      return;
+    }
+    let cfi = null;
+    try { const l = epubRendition.currentLocation(); cfi = l && l.start ? l.start.cfi : null; } catch { cfi = null; }
+    if (!cfi) return;
+    const intentos = epubBlancoIntentos.get(cfi) || 0;
+    if (intentos >= 3) return;
+    epubBlancoIntentos.set(cfi, intentos + 1);
+    try {
+      if (intentos === 0) {
+        /* La cura barata: volver a mostrar la misma página. */
+        await epubDisplayBounded(cfi);
+      } else if (intentos === 1) {
+        /* Medido en el banco: mostrar la MISMA sección no basta
+           cuando su vista quedó vacía — epub.js la da por ya
+           mostrada y no la vuelve a pintar. Saltar a la sección
+           vecina y volver SÍ la obliga a pintarla de nuevo. */
+        const seccion = (epubBook.spine && typeof epubBook.spine.get === "function") ? epubBook.spine.get(cfi) : null;
+        const items = (epubBook.spine && epubBook.spine.spineItems) || [];
+        const idx = seccion ? items.indexOf(seccion) : -1;
+        const vecino = idx >= 0 ? (items[idx + 1] || items[idx - 1]) : null;
+        if (vecino && vecino.href) await epubDisplayBounded(vecino.href);
+        await epubDisplayBounded(cfi);
+      } else {
+        /* La carta fuerte: reapertura completa del lector en la
+           misma página (la posición vive en el almacenamiento). */
+        epubTeardownBook();
+        await initEpubReader();
+      }
+    } catch { /* el relocated del intento reprograma la vigilancia */ }
+    epubVigilarBlanco();
+  })();
 }
 
 /* r76: anota el avance del libro (el % de la página actual) cada
@@ -6498,6 +6747,7 @@ function epubScrubUp(e, isCancel) {
     } finally {
       epubUpdateProgress();
       epubCurlPoolSchedule();
+      epubVigilarBlanco();
     }
   })();
 }

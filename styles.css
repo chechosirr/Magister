@@ -798,6 +798,15 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
   position: absolute; inset: 0; z-index: 65; margin: 0;
   display: flex; align-items: center; justify-content: center;
   font-size: 15px; color: rgba(240,240,244,0.75); text-align: center; padding: 24px;
+  /* r79b (Sergio: «se está montando las letras: abriendo el
+     libro; no quiero que se monte»): la cortina es una PÁGINA
+     opaca, no un aviso flotante — fondo del color de la cáscara
+     para que mientras el libro carga NO se vea la página
+     pintándose debajo con el «Abriendo el libro…» montado sobre
+     sus letras. Las barras (z 70) quedan por encima y usables;
+     al retirarse la cortina, el libro aparece entero, de una
+     vez. */
+  background: #101014;
   /* Es solo un aviso: JAMÁS debe comerse los toques. Sin esto, si la
      apertura falla queda una capa muerta a pantalla completa sobre
      el escenario y el lector «no responde a nada» (visto en iOS). */
