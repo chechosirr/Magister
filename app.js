@@ -488,7 +488,9 @@ function searchBoxHtml({ dark = false, initial = "" } = {}) {
 
 /* Buscador propio de cada sección de «Tu biblioteca» (r32): mismo
    aspecto que el de «Buscar libros», ajustado a la columna de
-   contenido. Filtra en vivo la lista de ESA sección (evento input)
+   contenido. Sin pastilla «Buscar» (orden de Sergio, 2026-11-11):
+   solo la barra, con su lupa. Filtra en vivo la lista de ESA
+   sección (evento input)
    y cada sección conserva su propio término mientras se está en
    la vista; el envío del formulario no navega a ningún sitio. */
 function libSearchBoxHtml() {
@@ -3664,6 +3666,14 @@ function epubThemeCssText(t) {
   return "html, body { background: " + t.bg + " !important; }" +
     "body { color: " + t.ink + " !important; font-family: Georgia, 'Times New Roman', serif !important; line-height: 1.75 !important; }" +
     "h1, h2, h3 { color: " + t.head + " !important; }" +
+    /* Títulos y subtítulos siempre en Serif (preview r80p1,
+       pedido de Sergio): el cuerpo ya va en Georgia por la
+       regla de arriba, pero la CSS propia de un libro puede
+       poner sus títulos en otra letra y eso gana a la herencia
+       del cuerpo. Con regla propia y !important, ningún libro
+       puede sacar los títulos de la Serif. */
+    "h1 { font-family: Georgia, 'Times New Roman', serif !important; }" +
+    "h2, h3, h4, h5, h6 { font-family: Helvetica, 'Helvetica Neue', Arial, sans-serif !important; }" +
     "a { color: " + t.link + " !important; }" +
     /* Sin selección nativa (r19): en iOS, el toque sostenido
        abría el seleccionador de Safari (tiradores azules y su
@@ -3703,6 +3713,155 @@ function epubApplyThemeToDoc(contents) {
     doc.head.appendChild(st);
   }
   st.textContent = epubThemeCssText(t);
+  epubMarcarSaltos(contents);
+}
+
+/* Saltos de capítulo y de parte (preview r80p1, pedido de Sergio):
+   cuando un capítulo termina, el título del siguiente NO puede
+   quedar al final de la misma página — cada capítulo empieza
+   arriba, en página nueva, y el texto sigue desde ahí. Y cuando
+   el libro trae partes, la portadilla de cada parte («Parte 1»,
+   «Parte 2»…) va SOLA en su página: nada antes ni después en
+   ella. Los saltos se ponen exactamente en los destinos del
+   índice del propio libro (capítulos y secciones con título,
+   niveles 1 y 2; los subtítulos menores siguen fluyendo dentro
+   de la página): así vale igual para los libros convertidos —
+   donde el título puede caer a media página dentro de un
+   archivo — y para los de Gutenberg de un solo archivo. */
+let epubSaltosCache = null;   // { libro, mapa: Map href -> [{id, parte}] }
+function epubSaltosNormHref(h) {
+  let s = String(h || "");
+  try { s = decodeURIComponent(s); } catch { /* href ya legible */ }
+  s = s.split("#")[0].replace(/^\.\//, "").replace(/^\/+/, "");
+  return s;
+}
+function epubSaltosMapa() {
+  if (!epubBook || !epubBook.navigation) return null;
+  if (epubSaltosCache && epubSaltosCache.libro === epubBook) return epubSaltosCache.mapa;
+  const mapa = new Map();
+  const hijosEnOtros = (it, propio) =>
+    (it.subitems || []).some((s) => epubSaltosNormHref(s.href) !== propio);
+  const walk = (items, nivel) => {
+    for (const it of items || []) {
+      const completo = String(it.href || "");
+      const file = epubSaltosNormHref(completo);
+      const id = completo.includes("#") ? completo.split("#")[1] : "";
+      const label = String(it.label || "").trim();
+      const esParte = /\b(parte|part|libro|book|volumen|volume)\b/i.test(label.slice(0, 24))
+        || (nivel === 1 && hijosEnOtros(it, file));
+      if (nivel <= 2 && file) {
+        if (!mapa.has(file)) mapa.set(file, []);
+        mapa.get(file).push({ id: id || null, parte: esParte });
+      }
+      if (it.subitems) walk(it.subitems, nivel + 1);
+    }
+  };
+  try { walk(epubBook.navigation.toc, 1); } catch { /* sin índice */ }
+  epubSaltosCache = { libro: epubBook, mapa };
+  return mapa;
+}
+function epubMarcarSaltos(contents) {
+  try {
+    const mapa = epubSaltosMapa();
+    if (!mapa) return;
+    const doc = contents && contents.document;
+    if (!doc || !doc.body || !epubBook || !epubBook.spine) return;
+    const items = epubBook.spine.spineItems || [];
+    const item = items[contents.sectionIndex || 0];
+    if (!item) return;
+    const lista = mapa.get(epubSaltosNormHref(item.href));
+    if (!lista) return;
+    const esMobiliario = (el) =>
+      !!el && ((el.tagName === "P" && (el.classList.contains("autor") || el.classList.contains("img"))));
+    for (const ent of lista) {
+      if (!ent.id) continue;      // destino al inicio del archivo: ya abre página
+      const el = doc.getElementById(ent.id);
+      if (!el) continue;
+      let primero = el;
+      while (esMobiliario(primero.previousElementSibling)) primero = primero.previousElementSibling;
+      /* Las «páginas» de epub.js son COLUMNAS del documento:
+         el salto que WebKit honra en este diseño es el de
+         columna («page» lo ignora, medido en el rig). OJO:
+         nada de pageBreakBefore/pageBreakAfter — en WebKit
+         son la MISMA propiedad que break-before/break-after
+         y su «always» se serializa como «page», pisando el
+         salto de columna (medido también: era el fallo). */
+      if (primero.previousElementSibling) {
+        primero.style.breakBefore = "column";
+      }
+      if (ent.parte) {
+        el.style.breakAfter = "column";
+      }
+    }
+  } catch { /* un libro raro no debe romper la apertura */ }
+}
+
+/* r80p2 (pedido de Sergio): al abrir un libro SIN posición
+   guardada, no se abre en la portada: se abre en lo primero
+   que traiga de presentación — prefacio, prólogo o
+   introducción — según su propio índice, con los nombres de
+   esas piezas en los idiomas del catálogo. Si el libro no
+   trae ninguna, devuelve null y la apertura sigue como
+   siempre (desde la portada). La posición guardada de un
+   libro en curso manda sobre esto: solo decide la apertura
+   en frío.
+   La pieza tiene que ser DEL LIBRO (su nivel: las entradas
+   del índice, bajando solo por la entrada-título que envuelve
+   algunos índices y por las partes): la «Introducción» que
+   es una sección dentro de un capítulo no cuenta — en el
+   libro grande la primera así está en el sexto capítulo y
+   abrir ahí sería abrir a mitad de un capítulo. */
+const EPUB_INTRO_PALABRAS = new Set([
+  "prefacio", "prologo", "introduccion",
+  "preface", "foreword", "prologue", "introduction", "avant",
+  "vorwort", "einleitung", "einfuhrung", "prolog",
+  "prefazione", "introduzione",
+]);
+async function epubDestinoPresentacion() {
+  try {
+    let toc = null;
+    try {
+      const nav = await epubBook.loaded.navigation;
+      toc = nav && nav.toc ? nav.toc : null;
+    } catch { toc = null; }
+    if (!toc && epubBook.navigation) toc = epubBook.navigation.toc;
+    if (!toc || !toc.length) return null;
+    const norm = (s) => String(s || "").toLowerCase()
+      .normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const tituloLibro = epubBook.packaging && epubBook.packaging.metadata
+      ? norm(epubBook.packaging.metadata.title).trim() : "";
+    const esIntro = (label) => {
+      const toks = norm(label).replace(/[^a-z ]+/g, " ")
+        .split(/\s+/).filter(Boolean);
+      while (toks.length > 1 && (/^[ivxlcdm]+$/.test(toks[0])
+             || /^\d+$/.test(toks[0]))) toks.shift();
+      return toks.length > 0 && EPUB_INTRO_PALABRAS.has(toks[0]);
+    };
+    let hallado = null;
+    const walk = (items, profundidad) => {
+      for (const it of items || []) {
+        if (hallado) return;
+        if (it.href && esIntro(it.label)) {
+          hallado = String(it.href);
+          return;
+        }
+        const subs = it.subitems || [];
+        if (!subs.length) continue;
+        /* Solo se baja por la envoltura del índice (la entrada
+           que repite el título del libro) y por las partes:
+           un capítulo no se abre a buscar dentro. */
+        const propio = epubSaltosNormHref(it.href);
+        const esParte = /\b(parte|part|libro|book|volumen|volume)\b/i
+          .test(String(it.label || "").slice(0, 24))
+          || subs.some((s) => epubSaltosNormHref(s.href) !== propio);
+        const esEnvoltura = tituloLibro !== ""
+          && norm(it.label).trim() === tituloLibro;
+        if (esEnvoltura || esParte) walk(subs, profundidad + 1);
+      }
+    };
+    walk(toc, 0);
+    return hallado;
+  } catch { return null; }
 }
 
 function epubStyleContents(contents) {
@@ -5991,6 +6150,15 @@ async function epubOpenBook(seq, minimal) {
        y el libro abre desde la portada, sin llegar al display(). */
     if (startAt && !(await epubCfiResuelve(startAt))) { epubStoreRemove(epubPosKey()); startAt = undefined; }
   }
+  /* r80p2: sin posición guardada válida, la apertura en frío
+     va a la presentación del libro (prefacio, prólogo o
+     introducción, lo primero que traiga) en vez de a la
+     portada. Si el salto fallara, el catch de abajo sigue
+     cayendo a la portada como red. */
+  if (!minimal && !startAt) {
+    try { startAt = (await epubDestinoPresentacion()) || undefined; }
+    catch { startAt = undefined; }
+  }
   try {
     await epubDisplayBounded(startAt);
   } catch (dispErr) {
@@ -6878,6 +7046,13 @@ function epubFillToc(toc) {
   list.innerHTML = flat.map((it) =>
     `<button type="button" class="epub-toc-item" data-action="epub-toc-go" data-href="${esc(it.href)}">${esc(String(it.label || "").trim())}</button>`
   ).join("");
+  /* r80p1: si alguna sección se rindió antes de que llegara el
+     índice del libro, se le aplican ahora los saltos de
+     capítulo y de parte. */
+  try {
+    if (epubRendition) for (const c of epubRendition.getContents() || []) epubMarcarSaltos(c);
+    if (epubR2) for (const c of epubR2.getContents() || []) epubMarcarSaltos(c);
+  } catch { /* sin renditions aún */ }
 }
 
 /* Paneles que caen desde arriba (r19): el índice y el buscador
