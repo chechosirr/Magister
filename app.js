@@ -496,7 +496,6 @@ function libSearchBoxHtml() {
   return `<form class="searchbox light" role="search" aria-label="Buscar en ${donde}" data-lib-search-form>
     ${SEARCH_ICON}
     <input type="search" data-lib-search-input aria-label="Buscar en ${donde} por título o autor" placeholder="Busca por título o autor…" value="${esc(libFilter[libTab])}">
-    <button type="submit">Buscar</button>
   </form>`;
 }
 
