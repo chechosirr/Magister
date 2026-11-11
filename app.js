@@ -440,14 +440,21 @@ function coverHtml(book, large = false, soloTitulo = false) {
   return typo;
 }
 
-function bookCardHtml(book) {
+function bookCardHtml(book, opts) {
   /* r70p1 (pedidos de Sergio): la tarjeta muestra SOLO el título
      (sin el autor) y lleva arriba a la derecha el botón +/− del
      estante. El botón va en un envoltorio propio, HERMANO del
      botón de abrir (nunca dentro: un botón dentro de otro es
-     HTML inválido), para que tocar el signo no abra el libro. */
+     HTML inválido), para que tocar el signo no abra el libro.
+     r75: opts.terminado pinta la banda «Terminado» cruzando la
+     portada — SOLO lo pasan las vistas de «Tu biblioteca»
+     (estante, favoritos y recientes, con la condición
+     entry.finished de siempre); el escaparate y las categorías
+     llaman sin opts y sus tarjetas no cambian. */
+  const banda = (opts && opts.terminado)
+    ? `<span class="term-band">Terminado</span>` : "";
   const inner = `
-    <span class="cover-box">${coverHtml(book, false, true)}</span>
+    <span class="cover-box">${coverHtml(book, false, true)}${banda}</span>
     <p class="bt">${esc(book.title)}</p>
     ${book.hasContent ? "" : `<p class="soon">Próximamente</p>`}`;
   const chip = shelfChipHtml(book);
@@ -520,12 +527,16 @@ function libSectionBodyHtml() {
       <button type="button" class="btn-primary pad mt-3" data-action="goto-categories">Explorar</button>
     </div>`;
     }
+    /* r75: la banda «Terminado» también va en Recientes cuando
+       el libro consta terminado en el estante (la MISMA fuente:
+       entry.finished de shelfEntriesAll, emparejado por libro). */
+    const finPorId = new Map(shelfEntriesAll().map((e) => [e.book && e.book.id, !!e.finished]));
     return `<div class="grid-books">${recs.map((r) => {
         const book = BOOK_BY_ID.get(r.id);
         let enCurso = false;
         try { enCurso = !!window.localStorage.getItem("magister-epub-pos-" + r.gid); } catch { enCurso = false; }
         return `<div>
-        ${bookCardHtml(book)}
+        ${bookCardHtml(book, { terminado: !!(book && finPorId.get(book.id)) })}
         <p class="lib-meta">${enCurso ? "En curso · " : ""}${esc(recientesFecha(r.ts))}</p>
       </div>`;
       }).join("")}</div>`;
@@ -548,11 +559,14 @@ function libSectionBodyHtml() {
   return `<div class="grid-books">${entries.map((entry) => {
       const book = entry.book;
       return `<div>
-        ${bookCardHtml(book)}
+        ${bookCardHtml(book, { terminado: !!entry.finished })}
         <p class="lib-meta">${entry.finished ? "✓ Terminado" : entry.local ? (libLocalEnCurso(book) ? "En curso" : "Sin empezar") : (entry.currentChapter > 0 || entry.lastReadAt) ? `Capítulo ${entry.currentChapter + 1}` : "Sin empezar"}</p>
         <div class="lib-actions">
           <button type="button" class="fav${entry.favorite ? " on" : ""}" data-action="lib-fav" data-id="${book.id}" data-fav="${entry.favorite ? "0" : "1"}" aria-label="${entry.favorite ? `Quitar ${esc(book.title)} de favoritos` : `Marcar ${esc(book.title)} como favorito`}">${entry.favorite ? "★" : "☆"}</button>
-          <button type="button" class="remove" data-action="lib-remove" data-id="${book.id}" aria-label="Quitar ${esc(book.title)} de tu biblioteca">Quitar</button>
+          <!-- r75 (Sergio, foto-114): fuera el botón de texto «Quitar»
+               de las tarjetas del estante — quitar se hace con el «−»
+               dorado de la esquina de la portada, con su confirmación.
+               La estrella de favorito se queda. -->
         </div>
       </div>`;
     }).join("")}</div>`;
@@ -2197,22 +2211,53 @@ document.addEventListener("click", async (e) => {
   else if (action === "shelf-toggle") shelfToggle(id);
   else if (action === "shelf-remove-ok") shelfRemoveConfirmed();
   else if (action === "shelf-remove-cancel") shelfHideConfirm();
-  else if (action === "lib-remove") {
-    /* r70p1: «Quitar» del estante es el mismo gesto que el «−»
-       de la tarjeta: pide la misma confirmación antes de borrar
-       (del servicio o del estante local, según el libro). */
-    const book = BOOK_BY_ID.get(id);
-    if (book) shelfAskRemove(book);
-  }
+  /* r75: la acción «lib-remove» desaparece con su botón «Quitar»
+     de las tarjetas del estante (queda huérfana: ningún elemento
+     la emite ya). Quitar un libro sigue vivo por la otra vía: el
+     «−» de la portada (shelf-toggle → shelfAskRemove, con su
+     confirmación), que no se toca. */
   else if (action === "lib-fav") {
     const book = BOOK_BY_ID.get(id);
+    const fav = el.dataset.fav === "1";
+    /* r75 (Sergio, foto-114): pulsar la estrella NO re-renderiza.
+       Antes ambas ramas acababan en render(): la vista entera se
+       reconstruía, las portadas se recargaban y la pantalla
+       parpadeaba. Ahora la persistencia es la de siempre, pero la
+       estrella tocada se actualiza EN EL SITIO (★/☆, clase y
+       aria-label en su propio nodo) y la rejilla, las portadas y
+       el scroll quedan intactos. Solo en la pestaña «Favoritos»,
+       al desfavoritar, la tarjeta sale de ESA lista — se retira
+       su nodo, sin reconstruir nada más. */
+    const pintaEstrella = () => {
+      el.textContent = fav ? "★" : "☆";
+      el.classList.toggle("on", fav);
+      el.dataset.fav = fav ? "0" : "1";
+      if (book) el.setAttribute("aria-label", fav ? `Quitar ${book.title} de favoritos` : `Marcar ${book.title} como favorito`);
+    };
+    const retiraSiFavoritos = () => {
+      if (libTab !== "favoritos" || fav) return;
+      const acciones = el.closest(".lib-actions");
+      const tarjeta = acciones ? acciones.parentElement : null;
+      const rejilla = tarjeta ? tarjeta.parentElement : null;
+      if (tarjeta) tarjeta.remove();
+      if (rejilla && rejilla.children.length === 0) {
+        /* Era la última: solo entonces se repinta el bloque de la
+           lista (nunca la vista entera) para enseñar el estado
+           vacío de la sección, como hace el buscador en vivo. */
+        const list = document.querySelector(".lib-list");
+        if (list) list.innerHTML = libSectionBodyHtml();
+      }
+    };
     if (book && book.catalogo) {
       const list = shelfLocalGet();
       const rec = list.find((r) => r.id === id);
-      if (rec) { rec.favorite = el.dataset.fav === "1"; shelfLocalSet(list); }
-      render();
+      if (rec) { rec.favorite = fav; shelfLocalSet(list); pintaEstrella(); retiraSiFavoritos(); }
     } else {
-      try { await api.toggleFavorite(token, id, el.dataset.fav === "1"); const lib = await api.myLibrary(token); libraryEntries = lib.entries || []; render(); } catch { /* modo muestra */ }
+      try {
+        await api.toggleFavorite(token, id, fav);
+        const lib = await api.myLibrary(token); libraryEntries = lib.entries || [];
+        pintaEstrella(); retiraSiFavoritos();
+      } catch { /* modo muestra: sin confirmación del servicio, la estrella no se mueve */ }
     }
   }
   else if (action === "detail-add") {
@@ -2518,7 +2563,7 @@ function langNombre(code) { return EPUB_LANG_NAMES[code] || code; }
 /* Marca de build del lector: va versionada en el index
    (app.js?v=r16) y visible junto al progreso, para saber qué
    código está corriendo en el teléfono de quien lo prueba. */
-const EPUB_BUILD = "r74";
+const EPUB_BUILD = "r75";
 const EPUB_POS_KEY = "magister-epub-pos";
 const EPUB_RETURN_KEY = "magister-epub-vuelta";
 const EPUB_SET_KEY = "magister-epub-settings";
@@ -3393,6 +3438,7 @@ function epubHtml() {
     <div class="epub-bottom">
       <div class="epub-progress">
         <div class="progress" id="epub-prog-track" role="progressbar" aria-label="${T("Progreso del libro")}"><div id="epub-prog-fill" style="width:0%"></div></div>
+        <div id="epub-prog-handle" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="rgba(15,15,18,0.88)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9.5,5.5 4.5,12 9.5,18.5"/><polyline points="14.5,5.5 19.5,12 14.5,18.5"/></svg></div>
         <div id="epub-return-anchor" hidden>
           <div id="epub-return-thumb" role="button" aria-label="${T("Volver a la página marcada")}"><div class="mg-thumb-scale"><iframe tabindex="-1"></iframe></div></div>
           <div id="epub-return-dot" role="button" aria-label="${T("Volver a la página marcada")}"></div>
@@ -4369,14 +4415,56 @@ let epubCurlPaper = EPUB_PAPER.oscuro;
 let epubCurlTones = EPUB_CURL_TONES.oscuro;
 let epubR2 = null;
 let epubR2Host = null;
+/* r75: coalescer de la reconstrucción del pool — como mucho UN
+   temporizador pendiente y UNA reconstrucción en curso. Las
+   llamadas extra mientras tanto no apilan nada: si llegan con
+   una reconstrucción en curso dejan una única nota de «otra
+   vez al acabar» (un booleano, no más temporizadores), porque
+   esa reconstrucción fotografía la página de cuando empezó y
+   la nueva ubicación merece una propia. Sin esto, cada
+   «relocated» (cada pase y cada salto del arrastre) creaba un
+   setTimeout nuevo y las ráfagas apilaban serializaciones del
+   documento entero de la sección, saturando el hilo principal
+   durante segundos con capítulos enormes: el «se traba al
+   volver o avanzar» de Sergio. */
+let epubPoolSchedTimer = null;
+let epubPoolBuilding = false;
+let epubPoolSchedAgain = false;
+/* r75: caché de los reversos next/prev del pool por
+   (html, offX, tamaño): si no cambió, el iframe se reutiliza
+   tal cual, sin recrearlo ni reasignar su srcdoc. */
+let epubCurlRevCache = {};
 
 function epubCurlPoolSchedule() {
-  setTimeout(() => { epubCurlPoolBuild().catch(() => {}); }, 90);
+  if (epubPoolSchedTimer) return;
+  if (epubPoolBuilding) { epubPoolSchedAgain = true; return; }
+  epubPoolSchedTimer = setTimeout(() => {
+    epubPoolSchedTimer = null;
+    epubCurlPoolBuild().catch(() => {});
+  }, 90);
 }
 
 window.addEventListener("resize", () => { if (epubOpen) { epubCurlLayerSync(); epubCurlPoolSchedule(); epubReturnRender(); } });
 
 async function epubCurlPoolBuild() {
+  /* r75: una sola reconstrucción en curso (ver la nota del
+     coalescer sobre epubCurlPoolSchedule): una llamada
+     concurrente no corre en paralelo — deja la nota de «otra
+     vez» y la que está en curso programa una al terminar si
+     hace falta. */
+  if (epubPoolBuilding) { epubPoolSchedAgain = true; return; }
+  epubPoolBuilding = true;
+  try { await epubCurlPoolBuildInner(); }
+  finally {
+    epubPoolBuilding = false;
+    if (epubPoolSchedAgain) {
+      epubPoolSchedAgain = false;
+      if (epubOpen) epubCurlPoolSchedule();
+    }
+  }
+}
+
+async function epubCurlPoolBuildInner() {
   if (!epubOpen || !epubRendition) return;
   /* r58: si hay un gesto (o un asentamiento) en curso, la
      reconstrucción NO se pierde: se reintenta en breve. Antes
@@ -4519,23 +4607,55 @@ function epubCurlPoolRender(D) {
   if (flapPaper) flapPaper.style.background = paper;
   const revs = document.getElementById("epub-curl-revs");
   if (revs) {
-    revs.innerHTML = "";
+    /* r75: los reversos se CACHEAN por (html, offX, tamaño).
+       Antes este render vaciaba el contenedor y recreaba los
+       dos iframes en CADA reconstrucción del pool, forzando dos
+       cargas completas del documento de la sección aunque la
+       página vecina no hubiera cambiado nada. Ahora un reverso
+       sin cambios se queda como está — ni se recrea el nodo ni
+       se reasigna su srcdoc — y solo se toca lo que cambió. */
     epubCurlRevEls = {};
     for (const key of ["next", "prev"]) {
       const T = D[key];
-      if (!T) continue;
-      const wrap = document.createElement("div");
-      wrap.className = "cv-wrap";
+      const cached = epubCurlRevCache[key];
+      if (!T) {
+        if (cached) { cached.wrap.remove(); delete epubCurlRevCache[key]; }
+        continue;
+      }
+      if (cached && cached.html === T.html && cached.offX === T.offX
+          && cached.frameW === T.frameW && cached.frameH === T.frameH) {
+        if (cached.wrap.parentNode !== revs) revs.appendChild(cached.wrap);
+        cached.wrap.style.display = "none";
+        epubCurlRevEls[key] = cached.wrap;
+        continue;
+      }
+      let wrap, f;
+      if (cached) {
+        wrap = cached.wrap;
+        f = cached.iframe;
+        if (wrap.parentNode !== revs) revs.appendChild(wrap);
+      } else {
+        wrap = document.createElement("div");
+        wrap.className = "cv-wrap";
+        f = document.createElement("iframe");
+        f.setAttribute("tabindex", "-1");
+        wrap.appendChild(f);
+        revs.appendChild(wrap);
+      }
       wrap.style.display = "none";
-      const f = document.createElement("iframe");
-      f.setAttribute("tabindex", "-1");
       f.style.width = T.frameW + "px";
       f.style.height = T.frameH + "px";
       f.style.transform = "translateX(" + T.offX + "px)";
-      f.srcdoc = T.html;
-      wrap.appendChild(f);
-      revs.appendChild(wrap);
+      if (!cached || cached.html !== T.html) f.srcdoc = T.html;
+      epubCurlRevCache[key] = { wrap, iframe: f, html: T.html, offX: T.offX, frameW: T.frameW, frameH: T.frameH };
       epubCurlRevEls[key] = wrap;
+    }
+    /* Reversos que ya no existen en el pool ni en la caché pero
+       pudieran quedar colgando en el contenedor: ninguno debe
+       sobrevivir a un render (misma limpieza que hacía el
+       innerHTML de antes, pero sin tocar los reutilizables). */
+    for (const child of Array.from(revs.children)) {
+      if (child !== epubCurlRevEls.next && child !== epubCurlRevEls.prev) child.remove();
     }
   }
   const holder = document.getElementById("epub-curl-strips");
@@ -5562,10 +5682,10 @@ async function epubCfiResuelve(cfi) {
   } finally { if (timer) clearTimeout(timer); }
 }
 
-function epubDisplayBounded(target) {
+function epubDisplayBounded(target, timeoutMs) {
   return new Promise((resolve, reject) => {
     let done = false;
-    const timer = setTimeout(() => { if (!done) { done = true; reject(new Error("display-timeout")); } }, EPUB_DISPLAY_TIMEOUT_MS);
+    const timer = setTimeout(() => { if (!done) { done = true; reject(new Error("display-timeout")); } }, timeoutMs || EPUB_DISPLAY_TIMEOUT_MS);
     let p;
     try { p = epubRendition.display(target); }
     catch (e) { done = true; clearTimeout(timer); reject(e); return; }
@@ -5684,6 +5804,11 @@ function destroyEpubReader() {
   epubScrubPending = null;
   epubReturn = null;
   epubPoolData = null;
+  /* r75: ni temporizadores del pool ni reversos cacheados del
+     libro anterior sobreviven al cierre. */
+  if (epubPoolSchedTimer) { clearTimeout(epubPoolSchedTimer); epubPoolSchedTimer = null; }
+  epubPoolSchedAgain = false;
+  epubCurlRevCache = {};
   epubPoolToken++;
   epubR2Destroy();
   { const ce = document.getElementById("epub-curl"); if (ce) ce.hidden = true; }
@@ -5709,6 +5834,15 @@ function epubOnRelocated(loc) {
   epubCurlPoolSchedule();
 }
 
+/* r75 (pedido de Sergio): asa con flechas sobre la barra, en el
+   extremo del relleno, para agarrar el arrastre a la vista. Es
+   solo visual (pointer-events:none): el gesto sigue siendo el
+   del track y el asa se pinta con el mismo % que el relleno. */
+function epubProgHandlePaint(pct) {
+  const h = document.getElementById("epub-prog-handle");
+  if (h) h.style.left = pct + "%";
+}
+
 function epubUpdateProgress() {
   /* r74: durante un arrastre, la barra y su texto los pinta el
      propio arrastre (siguen al dedo, por delante del asentamiento
@@ -5730,8 +5864,11 @@ function epubUpdateProgress() {
     if (pct >= 0) {
       epubLastPct = pct;
       fill.style.width = pct + "%";
+      epubProgHandlePaint(pct);
       txt.textContent = pct + " % del libro";
     } else if (epubLastPct >= 0) {
+      fill.style.width = epubLastPct + "%";
+      epubProgHandlePaint(epubLastPct);
       txt.textContent = epubLastPct + " % del libro";
     } else {
       txt.textContent = T("Calculando el progreso…");
@@ -5775,6 +5912,17 @@ function epubUpdateProgress() {
 let epubScrub = null;
 let epubScrubPending = null;
 let epubReturn = null;
+/* r75: frenos del arrastre — un solo display en vuelo (como
+   siempre), un intervalo mínimo entre displays en vivo para
+   absorber las ráfagas del dedo mandando solo la ÚLTIMA
+   fracción pedida, un límite propio y corto para cada display
+   del arrastre (la promesa colgada de epub.js documentada en
+   la r73 no puede dejar el arrastre muerto: a los ~4 s ese
+   salto se da por fallido y manda el siguiente) y un tope
+   duro para el cierre al soltar. */
+const EPUB_SCRUB_MIN_INTERVAL_MS = 200;
+const EPUB_SCRUB_DISPLAY_MS = 4000;
+const EPUB_SCRUB_CLOSE_MS = 5000;
 
 function epubReturnKey() { return EPUB_RETURN_KEY + "-" + (epubCurrent ? epubCurrent.gid : "sinlibro"); }
 
@@ -5801,15 +5949,48 @@ function epubReturnSnapshot() {
   } catch { return null; }
 }
 
+/* r75: tope del html que merece viajar a localStorage. Con
+   capítulos enormes la foto guardada es un documento entero
+   de cientos de miles de caracteres: serializarlo y escribirlo
+   en CADA arrastre congelaba su inicio. Por encima del tope
+   el punto se guarda SIN foto (la miniatura es un adorno; el
+   punto y su toque siguen funcionando igual, y en memoria la
+   foto de la sesión se conserva para verla al momento). */
+const EPUB_RETURN_SNAP_MAX = 250000;
+
 function epubReturnPersist() {
   try {
     if (!epubReturn) { epubStoreRemove(epubReturnKey()); return; }
-    const data = JSON.stringify({ cfi: epubReturn.cfi, pct: epubReturn.pct, snap: epubReturn.snap || null });
+    const snap = epubReturn.snap || null;
+    const snapOk = (snap && snap.html && snap.html.length <= EPUB_RETURN_SNAP_MAX) ? snap : null;
+    const data = JSON.stringify({ cfi: epubReturn.cfi, pct: epubReturn.pct, snap: snapOk });
     try { window.localStorage.setItem(epubReturnKey(), data); }
     catch { /* cuota: se guarda el punto sin la foto */
       window.localStorage.setItem(epubReturnKey(), JSON.stringify({ cfi: epubReturn.cfi, pct: epubReturn.pct, snap: null }));
     }
   } catch { /* sin almacenamiento: el punto vive solo en la sesión */ }
+}
+
+/* r75: foto reutilizada del pool de clones, o null si el pool
+   no fotografía ESTA página. epubCurlPoolBuild ya serializó el
+   documento entero de la sección en epubPoolData.cur.html con
+   su sello D.locKey (sección:página): si el sello coincide con
+   la ubicación viva, esa serialización ES la foto — volver a
+   serializar el documento en síncrono al tocar la barra era
+   trabajo duplicado que congelaba el inicio del arrastre. */
+function epubReturnSnapshotFromPool() {
+  try {
+    const D = epubPoolData;
+    if (!D || !D.cur || !D.locKey) return null;
+    const live = (typeof epubPoolLocKey === "function") ? epubPoolLocKey() : null;
+    if (!live || live !== D.locKey) return null;
+    return {
+      html: D.cur.html,
+      frameW: D.cur.frameW, frameH: D.cur.frameH,
+      offX: D.cur.offX,
+      stageW: D.W, stageH: D.H,
+    };
+  } catch { return null; }
 }
 
 function epubReturnSet(r) {
@@ -5939,6 +6120,7 @@ function epubScrubPaint(frac) {
   const fill = document.getElementById("epub-prog-fill");
   const txt = document.getElementById("epub-prog-txt");
   if (fill) fill.style.width = (frac * 100) + "%";
+  epubProgHandlePaint(frac * 100);
   if (txt) txt.textContent = Math.round(frac * 100) + " %";
 }
 
@@ -5949,19 +6131,41 @@ function epubScrubTo(frac) {
   epubScrubDrain();
 }
 
-async function epubScrubDrain() {
+/* r75: el drenaje devuelve SIEMPRE su promesa (S.drainPromise),
+   para que epubScrubUp espere el drenaje mismo con un tope,
+   sin bucles de sondeo. Entre displays en vivo rige el
+   intervalo mínimo: mientras se espera, S.pending sigue
+   absorbiendo fracciones y al final solo viaja la última.
+   Al soltar (S.ending) el freno se levanta: el display final
+   exacto a la fracción de soltura sale en cuanto acabe el que
+   esté en vuelo. Todo display va acotado (EPUB_SCRUB_DISPLAY_MS):
+   uno colgado se da por fallido y el arrastre sigue vivo. */
+function epubScrubDrain() {
   const S = epubScrub;
-  if (!S || S.draining) return;
+  if (!S) return Promise.resolve();
+  if (S.draining) return S.drainPromise || Promise.resolve();
   S.draining = true;
-  try {
-    while (epubScrub === S && S.pending != null) {
-      const f = S.pending;
-      S.pending = null;
-      S.shown = f;
-      try { await epubRendition.display(epubBook.locations.cfiFromPercentage(f)); }
-      catch { /* un salto fallido no tumba el arrastre: manda el siguiente */ }
-    }
-  } finally { S.draining = false; }
+  const run = (async () => {
+    try {
+      while (epubScrub === S && S.pending != null) {
+        if (!S.ending && S.lastDisplayAt) {
+          const wait = EPUB_SCRUB_MIN_INTERVAL_MS - (Date.now() - S.lastDisplayAt);
+          if (wait > 0) {
+            await new Promise((r) => setTimeout(r, wait));
+            continue; /* manda la fracción más reciente, no la de antes de esperar */
+          }
+        }
+        const f = S.pending;
+        S.pending = null;
+        S.shown = f;
+        S.lastDisplayAt = Date.now();
+        try { await epubDisplayBounded(epubBook.locations.cfiFromPercentage(f), EPUB_SCRUB_DISPLAY_MS); }
+        catch { /* un salto fallido o colgado no tumba el arrastre: manda el siguiente */ }
+      }
+    } finally { S.draining = false; }
+  })();
+  S.drainPromise = run;
+  return run;
 }
 
 function epubScrubBegin(id, origin) {
@@ -5973,10 +6177,34 @@ function epubScrubBegin(id, origin) {
     previo: epubReturn,
     frac: origin.pct, pending: null, shown: null,
     draining: false, moved: false, ending: false,
+    lastDisplayAt: 0, drainPromise: null,
   };
-  /* El punto de vuelta nace al EMPEZAR el arrastre, con la foto
-     de la página que se está viendo. */
-  epubReturnSet({ cfi: origin.cfi, pct: origin.pct, snap: epubReturnSnapshot() });
+  /* r75: el punto de vuelta nace al instante, SIN serializar
+     nada en síncrono. Primero se prueba la foto que el pool ya
+     tiene de esta misma página (sello locKey coincidente): si
+     está, el marcador nace ya con miniatura y sin coste. Si no
+     está, el marcador nace sin foto y la foto clásica se toma
+     en diferido (la tarea siguiente): cuando aterriza, si este
+     marcador sigue siendo el vigente y la página en pantalla
+     sigue siendo la del origen, se le rellena la foto; si el
+     dedo ya viajó, se queda sin foto — el punto manda igual. */
+  const originLocKey = (typeof epubPoolLocKey === "function") ? epubPoolLocKey() : null;
+  const marker = { cfi: origin.cfi, pct: origin.pct, snap: epubReturnSnapshotFromPool() };
+  epubReturnSet(marker);
+  if (!marker.snap) {
+    setTimeout(() => {
+      if (epubReturn !== marker || marker.snap) return;
+      if (originLocKey) {
+        const live = (typeof epubPoolLocKey === "function") ? epubPoolLocKey() : null;
+        if (live && live !== originLocKey) return;
+      }
+      const snap = epubReturnSnapshot();
+      if (!snap || epubReturn !== marker) return;
+      marker.snap = snap;
+      epubReturnPersist();
+      epubReturnRender();
+    }, 0);
+  }
   epubScrubPaint(origin.pct);
   epubPoke();
 }
@@ -6027,35 +6255,53 @@ function epubScrubMove(e) {
   epubPoke();
 }
 
-function epubScrubUp(e) {
+function epubScrubUp(e, isCancel) {
   if (!epubScrub && epubScrubPending && e.pointerId === epubScrubPending.id) { epubScrubPending = null; return; }
   const S = epubScrub;
   if (!S || S.ending || e.pointerId !== S.id) return;
   S.ending = true;
-  const frac = epubScrubFrac(e.clientX);
+  /* r75: un pointercancel no trae una posición fiable del dedo:
+     su fracción es la última conocida del arrastre, no la del
+     evento — el cierre es el mismo que el de un pointerup y
+     deja el mismo estado limpio. */
+  const frac = isCancel ? S.frac : epubScrubFrac(e.clientX);
   if (Math.abs(frac - S.origin.pct) > 0.002) S.moved = true;
   S.frac = frac;
   epubScrubPaint(frac);
   epubScrubTo(frac);
+  const drain = S.drainPromise || epubScrubDrain();
   (async () => {
-    let espera = 0;
-    while (epubScrub === S && (S.draining || S.pending != null) && espera < 5000) {
-      await new Promise((r) => setTimeout(r, 80));
-      espera += 80;
-    }
+    /* r75: se espera la PROMESA del drenaje con un tope duro
+       (antes: un bucle de sondeo de hasta 5 s). Venza el
+       drenaje o venza el tope, epubScrub queda limpio: un
+       display colgado ya no puede dejar el arrastre trabado
+       (su propio límite de ~4 s lo da por fallido, y el bucle
+       del drenaje abandona en cuanto epubScrub deja de ser S). */
+    let timer = null;
+    try {
+      await Promise.race([
+        Promise.resolve(drain),
+        new Promise((r) => { timer = setTimeout(r, EPUB_SCRUB_CLOSE_MS); }),
+      ]);
+    } finally { if (timer) clearTimeout(timer); }
     if (epubScrub !== S) return;
     epubScrub = null;
-    if (!S.moved) {
-      /* Roce: ni el marcador ni el libro se quedan movidos. */
-      if (S.shown != null && Math.abs(S.shown - S.origin.pct) > 0.002) {
-        try { await epubDisplayBounded(S.origin.cfi); } catch { /* el libro ya estaba ahí o cerca */ }
+    try {
+      if (!S.moved) {
+        /* Roce: ni el marcador ni el libro se quedan movidos. */
+        if (S.shown != null && Math.abs(S.shown - S.origin.pct) > 0.002) {
+          try { await epubDisplayBounded(S.origin.cfi); } catch { /* el libro ya estaba ahí o cerca */ }
+        }
+        if (S.previo) epubReturnSet(S.previo); else epubReturnClear();
       }
-      if (S.previo) epubReturnSet(S.previo); else epubReturnClear();
+    } finally {
+      epubUpdateProgress();
+      epubCurlPoolSchedule();
     }
-    epubUpdateProgress();
-    epubCurlPoolSchedule();
   })();
 }
+
+function epubScrubCancel(e) { epubScrubUp(e, true); }
 
 function epubScrubAttach() {
   const track = document.getElementById("epub-prog-track");
@@ -6064,7 +6310,7 @@ function epubScrubAttach() {
     track.addEventListener("pointerdown", epubScrubDown);
     track.addEventListener("pointermove", epubScrubMove);
     track.addEventListener("pointerup", epubScrubUp);
-    track.addEventListener("pointercancel", epubScrubUp);
+    track.addEventListener("pointercancel", epubScrubCancel);
   }
   const anchor = document.getElementById("epub-return-anchor");
   if (anchor && !anchor.__mgTap) {

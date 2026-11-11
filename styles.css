@@ -178,6 +178,13 @@ main.hidden, header.hidden { display: none; }
    que el pie quede junto al borde de la pantalla, no flotando. */
 footer.site-footer { margin-top: auto; border-top: 1px solid var(--border); padding: 16px 0 8px; }
 main.wrap:has(> footer.site-footer) { padding-bottom: 16px; }
+/* r75 (foto-115 de Sergio): el pie nunca pegado al contenido — la
+   vista que precede al pie lleva siempre 48px de aire por debajo,
+   para que la raya del pie no toque ni se monte sobre el último
+   botón o texto (pasaba en la ficha: «Quitar de tu biblioteca»
+   quedaba sobre la raya). Con contenido corto no cambia nada:
+   margin-top:auto sigue empujando el pie al fondo. */
+main.wrap:has(> footer.site-footer) > :not(footer.site-footer) { margin-bottom: 48px; }
 footer.site-footer p { font-size: 12px; color: var(--dim); margin: 0; }
 
 /* ---------------------------------------------------------- escaparate */
@@ -578,6 +585,16 @@ h1.view-title.center { text-align: center; }
    tamaño intrínseco ya no puede deformar la tarjeta ni la rejilla;
    object-fit: cover recorta lo que sobre, como en «Ver todo». */
 .cover-box .cover-img, .cover-box .cover-typo { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0; box-shadow: none; }
+/* r75 (Sergio): banda «Terminado» — cruza TODO el ancho de la
+   portada, centrada sobre ella, cuando el libro consta
+   terminado en «Tu biblioteca». Franja oscura semitransparente
+   con ribete y letra dorados de la casa: legible sobre
+   cualquier portada, en claro y en oscuro. No recibe toques:
+   la tarjeta se sigue abriendo igual por debajo. */
+.cover-box .term-band { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); z-index: 4;
+  display: block; text-align: center; padding: 7px 4px; pointer-events: none;
+  background: rgba(12, 10, 6, 0.82); color: #e9c979; border-top: 1px solid var(--brass); border-bottom: 1px solid var(--brass);
+  font-size: 13px; font-weight: 700; letter-spacing: 0.12em; -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
 .grid-books .book-card .bt {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden; min-height: 2.75em;
@@ -803,6 +820,27 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
 /* r74: la barra de progreso se arrastra (la página sigue al dedo
    en vivo); el gesto es del track, sin scroll ni zoom parásitos. */
 #epub-prog-track { touch-action: none; cursor: pointer; }
+
+/* r75 (pedido de Sergio): asa con doble flecha en el extremo del
+   relleno, «una especie de flecha para facilitar el arrastre».
+   Disco dorado de 30px centrado sobre la barra (el track mide
+   6px y lleva overflow:hidden, por eso el asa vive fuera, como
+   el punto de vuelta), con las flechas ‹ › en oscuro: se lee
+   «de aquí se arrastra». pointer-events:none — el gesto sigue
+   siendo el del track entero y el asa solo sigue al relleno.
+   Al presionar la barra el asa crece un poco (agarre). */
+#epub-prog-handle {
+  position: absolute; top: 3px; left: 0; z-index: 5;
+  width: 30px; height: 30px; border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 35% 30%, #eec25e, #d9a441 70%);
+  border: 2px solid rgba(15,15,18,0.85);
+  box-shadow: 0 2px 7px rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+  transition: transform 120ms ease;
+}
+#epub-prog-track:active ~ #epub-prog-handle { transform: translate(-50%, -50%) scale(1.18); }
 
 /* r74: punto de vuelta — un círculo dorado SOBRE la barra en el
    % exacto del origen y, flotando encima, la miniatura de la
