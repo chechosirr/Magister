@@ -3664,11 +3664,21 @@ function epubCloseOverlays(except) {
    carácter a carácter. */
 function epubThemeCssText(t) {
   return "html, body { background: " + t.bg + " !important; }" +
-    "body { color: " + t.ink + " !important; font-family: Georgia, 'Times New Roman', serif !important; line-height: 1.75 !important; }" +
+    "body { color: " + t.ink + " !important; font-family: monospace !important; line-height: 1.75 !important; }" +
+    /* El cuerpo de TODOS los libros va en la letra
+       monoespacio de máquina de escribir (pedido de Sergio,
+       2026-11-11: la que trae la Doña Perfecta inglesa de
+       Gutenberg en su foto). La regla del body no basta: hay
+       libros que ponen su letra directamente en los párrafos
+       y eso gana a la herencia; por eso la misma imposición
+       cae sobre los bloques de texto. Los títulos no entran:
+       conservan su estilo (h1 Serif, subtítulos Helvética,
+       reglas de abajo). */
+    "p, div, li, blockquote, pre, td, th, dt, dd, figcaption, section, article { font-family: monospace !important; }" +
     "h1, h2, h3 { color: " + t.head + " !important; }" +
     /* Títulos y subtítulos siempre en Serif (preview r80p1,
-       pedido de Sergio): el cuerpo ya va en Georgia por la
-       regla de arriba, pero la CSS propia de un libro puede
+       pedido de Sergio): el cuerpo ya va en monoespacio por
+       la regla de arriba, pero la CSS propia de un libro puede
        poner sus títulos en otra letra y eso gana a la herencia
        del cuerpo. Con regla propia y !important, ningún libro
        puede sacar los títulos de la Serif. */
