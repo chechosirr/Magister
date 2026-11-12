@@ -4418,12 +4418,21 @@ function epubSheetMove(x, y) {
   g.pts.push({ x, t: Date.now() });
   if (g.pts.length > 14) g.pts.shift();
   if (!g.dir) {
+    /* En los temas de arrastre (claro y menta) el pase se fija
+       tras ~6 px en vez de 14–18: la tira se mide desde el
+       punto donde se puso el dedo, y con el recorrido largo
+       del fijado clásico la hoja daba un saltito al enganchar
+       (Sergio, 2026-11-11: «quiero que el arrastre empiece
+       desde donde yo pongo el dedo; ahorita lo pongo y se
+       desacomoda un poco»). El tema oscuro conserva sus
+       umbrales de siempre. */
+    const umbralArrastre = (epubThemeName === "claro" || epubThemeName === "menta") ? 6 : 0;
     /* Desde una esquina el fijado es más permisivo con lo
        vertical: el arrastre natural de esquina es diagonal. */
     let lock = false;
     if (g.corner) {
       const inward = g.corner.side > 0 ? dx < 0 : dx > 0;
-      if (Math.hypot(dx, dy) > 18 && inward && Math.abs(dx) > 0.45 * Math.abs(dy)) lock = true;
+      if (Math.hypot(dx, dy) > (umbralArrastre || 18) && inward && Math.abs(dx) > 0.45 * Math.abs(dy)) lock = true;
     } else if (g.center) {
       /* Nacido en el CENTRO (r23): basta cruzar un umbral corto
          con el mismo criterio de cono del pase de esquina
@@ -4435,8 +4444,8 @@ function epubSheetMove(x, y) {
          la geometría de esquina mantiene el punto efectivo
          dentro del cono de 45° desde la esquina ancla: el
          volteo vertical sigue prohibido. */
-      if (Math.abs(dx) >= 14 && Math.abs(dx) > 0.45 * Math.abs(dy)) lock = true;
-    } else if (Math.abs(dx) > 16 && Math.abs(dx) > 1.35 * Math.abs(dy)) lock = true;
+      if (Math.abs(dx) >= (umbralArrastre || 14) && Math.abs(dx) > 0.45 * Math.abs(dy)) lock = true;
+    } else if (Math.abs(dx) > (umbralArrastre || 16) && Math.abs(dx) > 1.35 * Math.abs(dy)) lock = true;
     if (lock) {
       g.dir = dx < 0 ? 1 : -1;
       /* Nacido en el centro con diagonal clara (r23): la solapa
@@ -5134,6 +5143,13 @@ function epubPoolIsStale() {
   return !!(D.locKey && live && D.locKey !== live);
 }
 
+/* El hueco entre las dos hojas de la tira del arrastre
+   (claro/menta): las páginas van pegadas en una sola pieza
+   rígida con este espacio en medio, como en Kindle — Sergio,
+   2026-11-11: «las dos hojas pegadas rígidas con un espacio
+   en medio. No una abajo». */
+const EPUB_SLIDE_GAP = 18;
+
 function epubCurlTryBegin(g, x, y) {
   if (epubCurl || epubCurlBusy) return false;
   const D = epubPoolData;
@@ -5146,6 +5162,13 @@ function epubCurlTryBegin(g, x, y) {
   if (!D[key] || !epubCurlRevEls[key] || !epubCurlStripEls) return false;
   const layer = document.getElementById("epub-curl");
   if (!layer) return false;
+  /* Arrastre tipo Kindle SOLO en claro y menta (pedido de
+     Sergio, 2026-11-11: «que se arrastre la hoja nada más como
+     es en Amazon Kindle; en tema oscuro mantén el efecto
+     actual»): el pase se pinta como un arrastre rígido de la
+     página (epubCurlSlideFrame) en vez del doblez. La
+     mecánica — gesto, umbrales, asentamiento — es la misma. */
+  const arrastre = (epubThemeName === "claro" || epubThemeName === "menta");
   epubCurlLayerSync();
   const T = EPUB_CURL_TONES[epubThemeName] || EPUB_CURL_TONES.oscuro;
   epubCurlTones = T;
@@ -5179,7 +5202,7 @@ function epubCurlTryBegin(g, x, y) {
      epubCurlPoolRender): en oscuro, las dos caras oscuras. */
   if (flatWrap) { flatWrap.style.background = themeBg; flatWrap.style.clipPath = ""; }
   if (epubCurlStripEls) for (const s of epubCurlStripEls) s.frontEl.style.background = themeBg;
-  if (wash) { wash.style.background = g.dir > 0 ? T.wash : T.washPrev; wash.style.opacity = ""; }
+  if (wash) { wash.style.background = g.dir > 0 ? T.wash : T.washPrev; wash.style.opacity = arrastre ? "0" : ""; }
   /* La geometría activa es la solapa de doblez (diagonal en
      esquina, vertical en borde): las franjas del cilindro quedan
      fuera (holder oculto) durante TODO el gesto en ambos pases —
@@ -5195,7 +5218,7 @@ function epubCurlTryBegin(g, x, y) {
        proyectada NUNCA se veía (medido: la página revelada
        quedaba plana junto al doblez). Se enciende de verdad
        con "block" para poder probar la sombra tenue. */
-    cast.style.display = "block";
+    cast.style.display = arrastre ? "none" : "block";
     cast.style.background = T.castGrad || ("linear-gradient(90deg, " + T.cast + " 0%, rgba(0,0,0,0) 100%)");
   }
   if (seam) {
@@ -5211,16 +5234,51 @@ function epubCurlTryBegin(g, x, y) {
     seam.style.background = T.seamGrad || T.castGrad || ("linear-gradient(90deg, " + T.cast + " 0%, rgba(0,0,0,0) 100%)");
   }
   if (flap) {
-    flap.hidden = false;
+    flap.hidden = arrastre;
     const band = flap.querySelector(".cv-flap-band");
     if (band) band.style.background = T.band;
     const fp = flap.querySelector(".cv-flap-paper");
     if (fp) fp.style.background = epubCurlPaper;
   }
+  /* En arrastre, las dos hojas forman UNA tira rígida: la
+     plana (página actual) y el reverso de la vecina van
+     pegados con EPUB_SLIDE_GAP entre ellos, sobre el fondo
+     del tema — que es lo que se ve por el hueco — y se mueven
+     juntos en epubCurlSlideFrame. Las sombras suaves caen de
+     cada hoja hacia el hueco, como dos tarjetas. */
+  if (layer) layer.style.background = arrastre ? themeBg : "";
+  if (flatWrap) {
+    flatWrap.style.transform = "";
+    flatWrap.style.zIndex = arrastre ? "2" : "";
+    flatWrap.style.boxShadow = !arrastre ? ""
+      : (g.dir > 0 ? "14px 0 24px -10px rgba(0,0,0,0.32)"
+                   : "-14px 0 24px -10px rgba(0,0,0,0.32)");
+  }
+  const revPrevA = epubCurlRevEls && epubCurlRevEls.prev;
+  if (revPrevA) {
+    revPrevA.style.transform = (arrastre && g.dir < 0)
+      ? "translateX(" + (-(D.W + EPUB_SLIDE_GAP)) + "px)" : "";
+    revPrevA.style.boxShadow = (arrastre && g.dir < 0)
+      ? "14px 0 24px -10px rgba(0,0,0,0.32)" : "";
+    revPrevA.style.zIndex = "";
+  }
+  const revNextA = epubCurlRevEls && epubCurlRevEls.next;
+  if (revNextA) {
+    revNextA.style.transform = (arrastre && g.dir > 0)
+      ? "translateX(" + (D.W + EPUB_SLIDE_GAP) + "px)" : "";
+    revNextA.style.boxShadow = (arrastre && g.dir > 0)
+      ? "-14px 0 24px -10px rgba(0,0,0,0.32)" : "";
+    revNextA.style.zIndex = "";
+  }
   const viewer = document.getElementById("epub-viewer");
   if (viewer) viewer.style.visibility = "hidden";
   layer.hidden = false;
   epubCurl = {
+    arrastre: arrastre,
+    /* Solo arrastre: la x local donde el dedo TOCÓ la hoja.
+       La tira se desplaza lo que el dedo se desplaza desde
+       ahí (epubCurlSlideFrame), no desde el punto de fijado. */
+    slideX0: (g.x0 || 0) - (g.ox || 0),
     dir: g.dir, mode: cornerMode ? "corner" : "edge",
     fx: x, fy: y, bx: x, by: y, dragGain: EPUB_TURN_GAIN,
     W: D.W, H: D.H, frameOff: D.cur.offX, xi: D.W, raf: 0, anim: false,
@@ -5279,8 +5337,52 @@ function epubCurlMove(x, y) {
 function epubCurlFrame() {
   const C = epubCurl;
   if (!C) return;
+  if (C.arrastre) { epubCurlSlideFrame(); return; }
   if (C.mode === "corner") { epubCurlCornerFrame(); return; }
   epubCurlEdgeFrame();
+}
+
+/* El fotograma del arrastre (claro y menta): las DOS hojas
+   se mueven pegadas como una sola tira rígida con su hueco
+   en medio, siguiendo al punto efectivo del gesto (C.fx, el
+   mismo que anima el asentamiento al soltar, así que el
+   arrastre y la salida/recuperación salen de esta misma
+   regla). Al avanzar, la tira [actual · hueco · siguiente]
+   corre a la izquierda; al retroceder, la tira [anterior ·
+   hueco · actual] corre a la derecha. Ninguna hoja va sobre
+   la otra ni debajo: van una junto a la otra. Nada de doblez:
+   ni solapa, ni banda, ni sombras de pliegue; solo las
+   sombras suaves de cada hoja hacia el hueco. */
+function epubCurlSlideFrame() {
+  const C = epubCurl;
+  if (!C) return;
+  const W = C.W;
+  const GAP = EPUB_SLIDE_GAP;
+  /* El umbral de soltura (epubCurlRelease) lee C.xi como la
+     posición del borde que avanza — en el doblez lo mantiene
+     FoldFrame; aquí ese borde va justo en el dedo: la misma
+     cuenta. Sin esto xi quedaba en su valor de nacimiento y
+     ninguna vuelta de arrastre se cometía por posición. */
+  C.xi = C.dir > 0 ? C.fx : W - C.fx;
+  const flat = document.getElementById("epub-curl-flat");
+  /* El desplazamiento de la tira es el del DEDO desde donde
+     tocó (C.slideX0): la hoja empieza a moverse desde el
+     punto del toque y lo sigue 1:1, sin el salto del fijado.
+     Al soltar y cancelar, epubCurlAnimate devuelve fx a
+     slideX0 (ver la rama de cancelación) y la tira se posa
+     exactamente en su sitio. */
+  const desp = C.fx - (C.slideX0 || 0);
+  if (C.dir > 0) {
+    let off = Math.max(-(W + GAP), Math.min(0, desp));
+    if (flat) flat.style.transform = "translateX(" + off + "px)";
+    const next = epubCurlRevEls && epubCurlRevEls.next;
+    if (next) next.style.transform = "translateX(" + (off + W + GAP) + "px)";
+  } else {
+    let off = Math.max(0, Math.min(W + GAP, desp));
+    if (flat) flat.style.transform = "translateX(" + off + "px)";
+    const prev = epubCurlRevEls && epubCurlRevEls.prev;
+    if (prev) prev.style.transform = "translateX(" + (off - W - GAP) + "px)";
+  }
 }
 
 /* Doblez verdadero (r18; unificado en r21): pliegue cuya línea
@@ -5693,7 +5795,7 @@ function epubCurlAnimate(complete) {
     const travel = Math.hypot(toX - fromX, toY - fromY);
     DUR = Math.max(EPUB_CURL_RELEASE_MS, Math.min(560, Math.round(EPUB_CURL_RELEASE_MS * travel / (C.W + 240))));
   } else if (C.mode === "corner") {
-    toX = C.kx; toY = C.ky;
+    toX = C.arrastre ? C.slideX0 : C.kx; toY = C.ky;
     /* r59: la duración de la vuelta crece con el recorrido,
        como al cometer (ver la nota de la curva en stepFn). */
     const travelC = Math.hypot(toX - fromX, toY - fromY);
@@ -5706,7 +5808,10 @@ function epubCurlAnimate(complete) {
        vuelta — el fallo de Sergio). Posada en el ancla, el
        fotograma final de la vuelta ya es la página actual
        entera y el asentamiento no corta a nada. */
-    toX = C.kx; toY = C.ky;
+    /* En arrastre, el «ancla» a la que vuelve la hoja es el
+       punto donde el dedo la tocó (slideX0): ahí la tira se
+       posa exactamente en reposo. En el doblez manda kx. */
+    toX = C.arrastre ? C.slideX0 : C.kx; toY = C.ky;
     /* r59: la duración de la vuelta crece con el recorrido,
        como al cometer (ver la nota de la curva en stepFn). */
     const travelE = Math.hypot(toX - fromX, toY - fromY);
@@ -5762,7 +5867,7 @@ function epubCurlSettle(complete) {
   const rend = epubRendition;
   const finish = () => {
     const layer = document.getElementById("epub-curl");
-    if (layer) layer.hidden = true;
+    if (layer) { layer.hidden = true; layer.style.background = ""; }
     const viewer = document.getElementById("epub-viewer");
     if (viewer) viewer.style.visibility = "";
     const flap = document.getElementById("epub-curl-flap");
@@ -5774,7 +5879,11 @@ function epubCurlSettle(complete) {
     const holder = document.getElementById("epub-curl-strips");
     if (holder) holder.style.visibility = "";
     const flatWrap = document.getElementById("epub-curl-flat");
-    if (flatWrap) { flatWrap.style.clipPath = ""; flatWrap.style.visibility = ""; }
+    if (flatWrap) { flatWrap.style.clipPath = ""; flatWrap.style.visibility = ""; flatWrap.style.transform = ""; flatWrap.style.boxShadow = ""; flatWrap.style.zIndex = ""; }
+    for (const k of ["next", "prev"]) {
+      const rw = (typeof epubCurlRevEls !== "undefined" && epubCurlRevEls) ? epubCurlRevEls[k] : null;
+      if (rw) { rw.style.transform = ""; rw.style.boxShadow = ""; rw.style.zIndex = ""; }
+    }
     const washEl = document.getElementById("epub-curl-wash");
     if (washEl) washEl.style.opacity = "";
     epubCurlBusy = false;
