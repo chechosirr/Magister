@@ -3666,28 +3666,43 @@ function epubCloseOverlays(except) {
    lo reutiliza para vestir de CLARO el anverso de la hoja
    durante los pases en tema oscuro. La salida es la de siempre,
    carácter a carácter. */
+/* Bookerly (pedido de Sergio, 2026-11-11 noche): la letra
+   impuesta en TODO el libro — títulos, subtítulos y texto
+   principal — y en todos los libros. Los archivos viven junto
+   al lector (fonts/) y la base se calcula desde la propia
+   página, para que el mismo código sirva en la preview y en
+   el sitio publicado. Sustituye a la imposición de la
+   monoespacio de la regla 55 y a los títulos Serif/Helvética. */
+const EPUB_FONT_BASE = new URL("fonts/", window.location.href).href;
+const EPUB_FONT_STACK = "\"Bookerly\", \"Palatino Linotype\", Palatino, Georgia, serif";
+function epubFontFaceCss() {
+  function cara(archivo, peso, estilo) {
+    return "@font-face { font-family: \"Bookerly\"; src: url(\"" +
+      EPUB_FONT_BASE + archivo + "\") format(\"woff2\"); font-weight: " +
+      peso + "; font-style: " + estilo + "; font-display: swap; }";
+  }
+  return cara("bookerly-regular.woff2", 400, "normal") +
+    cara("bookerly-bold.woff2", 700, "normal") +
+    cara("bookerly-italic.woff2", 400, "italic") +
+    cara("bookerly-bolditalic.woff2", 700, "italic");
+}
 function epubThemeCssText(t) {
-  return "html, body { background: " + t.bg + " !important; }" +
-    "body { color: " + t.ink + " !important; font-family: monospace !important; line-height: 1.75 !important; }" +
-    /* El cuerpo de TODOS los libros va en la letra
-       monoespacio de máquina de escribir (pedido de Sergio,
-       2026-11-11: la que trae la Doña Perfecta inglesa de
-       Gutenberg en su foto). La regla del body no basta: hay
+  return epubFontFaceCss() +
+    "html, body { background: " + t.bg + " !important; }" +
+    "body { color: " + t.ink + " !important; font-family: " + EPUB_FONT_STACK + " !important; line-height: 1.75 !important; }" +
+    /* La imposición de Bookerly no se queda en el body: hay
        libros que ponen su letra directamente en los párrafos
        y eso gana a la herencia; por eso la misma imposición
-       cae sobre los bloques de texto. Los títulos no entran:
-       conservan su estilo (h1 Serif, subtítulos Helvética,
-       reglas de abajo). */
-    "p, div, li, blockquote, pre, td, th, dt, dd, figcaption, section, article { font-family: monospace !important; }" +
+       cae sobre los bloques de texto y sobre los títulos
+       (reglas de abajo). */
+    "p, div, li, blockquote, pre, td, th, dt, dd, figcaption, section, article { font-family: " + EPUB_FONT_STACK + " !important; }" +
     "h1, h2, h3 { color: " + t.head + " !important; }" +
-    /* Títulos y subtítulos siempre en Serif (preview r80p1,
-       pedido de Sergio): el cuerpo ya va en monoespacio por
-       la regla de arriba, pero la CSS propia de un libro puede
-       poner sus títulos en otra letra y eso gana a la herencia
-       del cuerpo. Con regla propia y !important, ningún libro
-       puede sacar los títulos de la Serif. */
-    "h1 { font-family: Georgia, 'Times New Roman', serif !important; }" +
-    "h2, h3, h4, h5, h6 { font-family: Helvetica, 'Helvetica Neue', Arial, sans-serif !important; }" +
+    /* Títulos y subtítulos TAMBIÉN en Bookerly (pedido de
+       Sergio, 2026-11-11 noche): con regla propia y
+       !important, la CSS de un libro no puede sacarlos de la
+       letra impuesta. Sustituye al h1 en Serif y a los
+       subtítulos en Helvética. */
+    "h1, h2, h3, h4, h5, h6 { font-family: " + EPUB_FONT_STACK + " !important; }" +
     "a { color: " + t.link + " !important; }" +
     /* Sin selección nativa (r19): en iOS, el toque sostenido
        abría el seleccionador de Safari (tiradores azules y su
@@ -3704,6 +3719,15 @@ function epubThemeCssText(t) {
        columna. Con el tope al 100 % ningún contenido de un libro
        — subido o de Gutenberg — puede descuadrar la página. */
     "svg, video, table { max-width: 100% !important; }" +
+    /* Ninguna imagen puede pasar de una página (2026-11-11):
+       epub.js inyecta este tope (con break-inside) SOLO en
+       sus vistas; los clones del pase de página que arma el
+       lector no lo reciben y ahí una imagen alta se partía
+       entre dos páginas (portadas y contraportadas). El CSS
+       de tema llega a TODOS los documentos, clones incluidos:
+       90vh deja la imagen entera dentro de la columna. */
+    "img, svg { max-width: 100% !important; max-height: 90vh !important; break-inside: avoid !important; page-break-inside: avoid !important; }" +
+    "img { object-fit: contain; }" +
     /* Silabeo automático (preview r71p1, Opción A de Sergio
        contra los huecos anchos de la justificación): la palabra
        larga se parte con guion al final de la línea según el
@@ -3889,6 +3913,22 @@ function epubStyleContents(contents) {
   epubApplyThemeToDoc(contents);
   const doc = contents && contents.document;
   if (!doc || !doc.head) return;
+  /* Tope de imagen EN EL PROPIO ELEMENTO (2026-11-11): las
+     fotos del pase de página son copias del HTML de esta
+     sección, y el estilo en línea viaja con la copia pase lo
+     que pase; así ninguna imagen — portada, contraportada o
+     figura — puede pasar del alto de una página ni partirse
+     en dos en NINGUNA pantalla del lector. El tope es el
+     90 % del alto del marco, como el que pone epub.js. */
+  try {
+    const win = doc.defaultView;
+    const tope = Math.round(((win && win.innerHeight) || 800) * 0.9) + "px";
+    doc.querySelectorAll("img, svg").forEach((im) => {
+      im.style.maxWidth = "100%";
+      im.style.maxHeight = tope;
+      im.style.breakInside = "avoid";
+    });
+  } catch { /* sección sin ventana: manda el CSS de tema */ }
   /* Silabeo (preview r71p1): `hyphens: auto` solo parte si el
      documento declara su idioma. Si el XHTML del libro trae su
      propio lang/xml:lang se respeta; si no trae ninguno, se
@@ -4188,15 +4228,22 @@ function epubImageHitAt(clientX, clientY) {
     if (!doc || !win || !frame) continue;
     const rect = frame.getBoundingClientRect();
     if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) continue;
-    let el = null;
-    try { el = doc.elementFromPoint(clientX - rect.left, clientY - rect.top); } catch { el = null; }
-    if (!el) return null;
-    let img = null;
-    if (el.tagName === "IMG") img = el;
-    else if (el.querySelector) img = el.querySelector("img");
-    if (!img) return null;
-    const r = img.getBoundingClientRect();
-    return (r.width >= 40 && r.height >= 40) ? img : null;
+    /* Solo vale la imagen cuyo rectángulo contiene el toque
+       (2026-11-11): antes, si el toque caía en un contenedor
+       (el cuerpo de la sección, un div), se abría la primera
+       imagen que hubiera dentro aunque el dedo estuviera en
+       una zona sin texto y la imagen en otra página. Si hay
+       varias imágenes bajo el punto manda la más pequeña. */
+    const dx = clientX - rect.left, dy = clientY - rect.top;
+    let mejor = null, mejorArea = Infinity;
+    doc.querySelectorAll("img").forEach((im) => {
+      const r = im.getBoundingClientRect();
+      if (r.width < 40 || r.height < 40) return;
+      if (dx < r.left || dx > r.right || dy < r.top || dy > r.bottom) return;
+      const area = r.width * r.height;
+      if (area < mejorArea) { mejorArea = area; mejor = im; }
+    });
+    return mejor;
   }
   return null;
 }
@@ -8430,6 +8477,7 @@ function epubOpenWordSheet() {
   const btn = document.getElementById("epub-ws-translate-btn");
   if (btn) { btn.disabled = false; btn.textContent = T("Traducir"); }
   sh.hidden = false;
+  epubWsScrollTop();
   epubPaletteReset();
   epubChromeShow();
   /* Modo solo-traducción (r21): se esconden el cuadro de
@@ -8452,6 +8500,14 @@ function epubOpenWordSheet() {
     return;
   }
   epubWsLoadMeaning();
+}
+
+/* La hoja siempre se abre mostrando su parte superior:
+   la zona de scroll es la misma elemento para todas las
+   palabras y guardaba la posicion de la consulta anterior. */
+function epubWsScrollTop() {
+  const sc = document.getElementById("epub-ws-scroll");
+  if (sc) sc.scrollTop = 0;
 }
 
 async function epubWsLoadMeaning() {
@@ -8501,6 +8557,7 @@ function epubWsRenderMeaning() {
   const wrap = box.closest(".epub-ws-box");
   if (wrap) {
     wrap.style.cursor = recortada ? "pointer" : "";
+    epubWsScrollTop();
     if (!wrap.__mgDefHook) {
       wrap.__mgDefHook = true;
       wrap.addEventListener("click", () => {

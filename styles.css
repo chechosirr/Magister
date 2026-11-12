@@ -1493,7 +1493,7 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
      geometría (left/top/width/height) la fija el JS al tamaño del
      escenario en cada apertura y en cada gesto. */
   position: absolute; z-index: 15; overflow: visible;
-  pointer-events: none; perspective: 1500px;
+  pointer-events: none; perspective: 4000px;
 }
 
 .epub-curl[hidden] { display: none; }
