@@ -2240,6 +2240,7 @@ document.addEventListener("click", async (e) => {
   else if (action === "epub-palette-pick") epubPalettePick(el.dataset.modo, el.dataset.tipo, el.dataset.color);
   else if (action === "epub-palette-back") epubPaletteBack();
   else if (action === "epub-ws-close") epubWordSheetClose();
+  else if (action === "epub-ws-speak") epubWsSpeak();
   else if (action === "epub-ws-translate") epubWsTranslate();
   else if (action === "epub-note-save") epubNoteSave();
   else if (action === "epub-noteview-close") epubNoteViewClose();
@@ -3440,13 +3441,16 @@ function epubHtml() {
         <div class="epub-ws-handle" id="epub-ws-handle"><span class="epub-ws-grip"></span></div>
         <div class="epub-ws-head">
           <p class="epub-ws-word" id="epub-ws-word">Palabra</p>
+          <button type="button" class="epub-ws-speak" data-action="epub-ws-speak" aria-label="Escuchar la palabra"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor" stroke="none"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.4 5.6a9 9 0 0 1 0 12.8"/></svg></button>
         </div>
         <div class="epub-ws-scroll" id="epub-ws-scroll">
           <div class="epub-ws-box">
             <p class="epub-ws-box-title">${T("Significado")}</p>
-            <select id="epub-ws-defdict" class="epub-ws-dictsel" aria-label="${T("Diccionario de definiciones")}"></select>
             <div id="epub-ws-meaning"><p class="epub-dict-status">${T("Buscando la definición…")}</p></div>
-            <p class="epub-dict-src" id="epub-ws-defsrc">${T("Diccionario · Wikcionario, el diccionario libre")}</p>
+            <div class="epub-ws-defrow">
+              <p class="epub-dict-src" id="epub-ws-defsrc">${T("Diccionario · Wikcionario, el diccionario libre")}</p>
+              <select id="epub-ws-defdict" class="epub-ws-dictsel epub-ws-dictsel-mini" aria-label="${T("Diccionario de definiciones")}"></select>
+            </div>
           </div>
           <div class="epub-ws-box">
             <p class="epub-ws-box-title">${T("Traducción")}</p>
@@ -3715,7 +3719,7 @@ function epubThemeCssText(t) {
        Sergio, 2026-11-11): títulos en amarillo (ámbar oscuro
        en los temas claros, para que se lea) y subtítulos en
        el color del texto del tema (blanco en el oscuro). */
-    "div.indice-nuestro li.ni1 { color: " + (t.ink === "#ffffff" ? "#ffd94d" : "#a87400") + " !important; }" +
+    "div.indice-nuestro li.ni1 { color: " + (t.ink === "#ffffff" ? "#ff4d4d" : "#c62828") + " !important; }" +
     "div.indice-nuestro li.ni2, div.indice-nuestro li.ni3 { color: " + t.ink + " !important; }";
 }
 
@@ -4167,6 +4171,36 @@ function epubSheetLocateWord(clientX, clientY) {
   return null;
 }
 
+/* Imagen bajo un punto de la página (coordenadas del
+   documento padre): el mismo barrido de marcos que la
+   palabra, resuelto con elementFromPoint del documento
+   del ePub (mismo origen). Solo cuentan las imágenes
+   con un tamaño digno (>= 40 px por lado): un adorno o
+   un separador diminuto no abre el visor. */
+function epubImageHitAt(clientX, clientY) {
+  if (!epubRendition) return null;
+  let all = [];
+  try { all = epubRendition.getContents() || []; } catch { all = []; }
+  for (const contents of all) {
+    const doc = contents && contents.document;
+    const win = doc && doc.defaultView;
+    const frame = win && win.frameElement;
+    if (!doc || !win || !frame) continue;
+    const rect = frame.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) continue;
+    let el = null;
+    try { el = doc.elementFromPoint(clientX - rect.left, clientY - rect.top); } catch { el = null; }
+    if (!el) return null;
+    let img = null;
+    if (el.tagName === "IMG") img = el;
+    else if (el.querySelector) img = el.querySelector("img");
+    if (!img) return null;
+    const r = img.getBoundingClientRect();
+    return (r.width >= 40 && r.height >= 40) ? img : null;
+  }
+  return null;
+}
+
 /* Arranque de la selección por toque sostenido (r16): engancha la
    palabra bajo el dedo y la deja VIVA como selección real dentro
    del iframe, SIN abrir el menú todavía. Si el dedo se queda, al
@@ -4417,7 +4451,13 @@ function epubSheetEnd(x, y) {
        vista de la nota; tocar fuera de marcas alterna controles
        como siempre. */
     const noteHit = epubNoteHitAt(x, y);
-    if (noteHit) epubOpenNoteView(noteHit);
+    /* Una foto o imagen bajo el dedo se abre a pantalla
+       completa en el visor (pedido de Sergio, 2026-11-11),
+       antes que el menú de marcas y que alternar los
+       controles; las marcas de nota conservan su prioridad. */
+    const imgHit = noteHit ? null : epubImageHitAt(x, y);
+    if (imgHit) epubImgViewOpen(imgHit.currentSrc || imgHit.src || "");
+    else if (noteHit) epubOpenNoteView(noteHit);
     else {
       /* Un toque sobre un pasaje RESALTADO o SUBRAYADO abre el
          menú de ESE pasaje entero (r21): cambiar color, quitar
@@ -4604,9 +4644,19 @@ function epubAttachGestures(contents) {
      entrega aunque el touchend se pierda por el camino). El click
      sintético que sigue a un touchend ya atendido se ignora por
      la marca epubTouchEndAt. */
-  doc.addEventListener("click", () => {
+  doc.addEventListener("click", (e) => {
     if (!epubOpen) return;
     if (Date.now() - epubTouchEndAt < 500) return;
+    /* Click directo sobre una imagen (ratón, o con la
+       lámina retirada): también abre el visor. */
+    const tgt = e && e.target;
+    if (tgt && tgt.tagName === "IMG") {
+      const r = tgt.getBoundingClientRect();
+      if (r.width >= 40 && r.height >= 40) {
+        epubImgViewOpen(tgt.currentSrc || tgt.src || "");
+        return;
+      }
+    }
     let sel = "";
     try { sel = contents.window.getSelection().toString(); } catch { sel = ""; }
     if (sel.trim()) return;
@@ -5931,6 +5981,31 @@ async function epubLocationsCargar(book) {
     (typeof epubBytes !== "undefined" && epubBytes) ? epubBytes.byteLength : 0);
 }
 
+/* Precarga de las secciones vecinas de la página
+   abierta (±3 secciones): pasar de página dentro de
+   ese tramo no espera a que la sección se cargue. */
+function epubPrecargarVecinas() {
+  try {
+    if (!epubBook || !epubBook.spine || !epubRendition) return;
+    const loc = epubRendition.location;
+    const cfi = loc && loc.start && loc.start.cfi;
+    if (!cfi) return;
+    const sec = epubBook.spine.get(cfi);
+    if (!sec || typeof sec.index !== "number") return;
+    const total = epubBook.spine.length;
+    for (let d = -3; d <= 3; d++) {
+      if (d === 0) continue;
+      const i = sec.index + d;
+      if (i < 0 || i >= total) continue;
+      const s = epubBook.spine.get(i);
+      if (s && typeof s.load === "function") {
+        const p = s.load(epubBook.load.bind(epubBook));
+        if (p && p.catch) p.catch(() => {});
+      }
+    }
+  } catch { /* la precarga ayuda; nunca tumba la apertura */ }
+}
+
 function epubTeardownBook() {
   epubDisplayEnVuelo = null;
   if (epubRendition) { try { epubRendition.destroy(); } catch { /* ya destruido */ } epubRendition = null; }
@@ -6204,15 +6279,19 @@ async function epubOpenBook(seq, minimal) {
      normal (precarga de la ficha o caché del aparato) tarda
      un instante. */
   await epubEsperarPaginaPintada();
-  if (!minimal) {
-    let tLoc = null;
-    try {
-      await Promise.race([
-        locListas,
-        new Promise((r) => { tLoc = setTimeout(r, 90000); }),
-      ]);
-    } finally { if (tLoc) clearTimeout(tLoc); }
-  }
+  /* Apertura progresiva (pedido de Sergio, 2026-11-11,
+     que sustituye a la espera de la r79b): en los libros
+     grandes la generación de localizaciones dejaba el
+     lector pegado en «Abriendo el libro». Ahora la
+     cortina se levanta en cuanto la página en la que el
+     lector se encontraba está pintada; alrededor de esa
+     página se precargan las secciones vecinas (las
+     «20 páginas» de cada lado: con los capítulos de
+     estos libros, tres secciones por lado cubren de
+     sobra ese tramo) y el resto —las localizaciones
+     enteras— sigue cargando detrás: la cadena locListas
+     ya avisa a la barra y al porcentaje cuando están. */
+  if (!minimal) epubPrecargarVecinas();
   if (seq !== epubInitSeq) throw new Error("apertura cancelada");
   epubBlancoIntentos.clear();
   if (loading) loading.hidden = true;
@@ -8643,10 +8722,21 @@ async function epubDefSelSync() {
   if (!sel) return;
   const sources = await epubDefSourcesLoad();
   const wanted = epubDefSelGet();
-  sel.innerHTML = sources.map((f) => {
-    const lang = EPUB_DEF_LANG_NAMES[f.glosas_en] || f.glosas_en || "";
-    const nombre = f.nombre || f.id;
-    const label = lang && !nombre.toLowerCase().includes(lang) ? nombre + " · " + lang : nombre;
+  /* r84 (pedido de Sergio): el selector va pequeño, abajo a la
+     derecha del cuadro, y muestra SOLO el idioma que da el
+     significado: «Español», «Latín → Español»…; si dos
+     diccionarios comparten idioma, se distingue con su nombre
+     corto («Inglés · WordNet»). */
+  const capIdioma = (t) => t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+  const cortas = sources.map((f) => {
+    const o = EPUB_DEF_LANG_NAMES[f.idioma];
+    const d = EPUB_DEF_LANG_NAMES[f.glosas_en] || f.glosas_en || "";
+    if (!d) return f.nombre || f.id;
+    return (o && f.idioma !== f.glosas_en) ? capIdioma(o) + " → " + capIdioma(d) : capIdioma(d);
+  });
+  sel.innerHTML = sources.map((f, i) => {
+    let label = cortas[i];
+    if (cortas.filter((x) => x === label).length > 1) label += " · " + (f.nombre || f.id).split(/[ (—]/)[0];
     return `<option value="${esc(f.id)}">${esc(label)}</option>`;
   }).join("");
   sel.value = sources.some((f) => f.id === wanted) ? wanted
@@ -8713,10 +8803,12 @@ async function epubDictSelSync() {
      idioma del libro al de preferencia del usuario (su cuenta;
      si no, español). */
   const lang = epubBookLang();
-  let pool = sources;
-  if (lang && sources.some((f) => f.origen === lang)) {
-    pool = sources.filter((f) => f.origen === lang);
-  }
+  /* TODAS las fuentes, siempre (pedido de Sergio,
+     2026-11-11): sea cual sea el idioma del libro o el
+     seleccionado por el cliente, el selector ofrece
+     cualquier diccionario; el idioma solo orienta la
+     opción por defecto. */
+  const pool = sources;
   sel.innerHTML = pool.map((f) => {
     const dl = EPUB_LANG_NAMES[f.destino] || f.destino || "";
     const nombre = f.nombre || f.id;
@@ -8727,9 +8819,11 @@ async function epubDictSelSync() {
   let wanted;
   if (epubSelManualDict && pool.some((f) => f.id === guardada)) {
     wanted = guardada; /* la que el usuario eligió a mano en esta lectura */
-  } else if (!epubSelManualDict && lang && pool !== sources) {
+  } else if (!epubSelManualDict && lang) {
     const dest = (user && user.idioma) || "es";
-    wanted = (pool.find((f) => f.destino === dest && f.tipo === "en_linea") ||
+    wanted = (pool.find((f) => f.origen === lang && f.destino === dest && f.tipo === "en_linea") ||
+              pool.find((f) => f.origen === lang && f.destino === dest) ||
+              pool.find((f) => f.destino === dest && f.tipo === "en_linea") ||
               pool.find((f) => f.destino === dest) ||
               pool.find((f) => f.id === "google-en") ||
               pool[0] || {}).id || "";
@@ -8756,6 +8850,31 @@ async function epubDictSelSync() {
    «primera_palabra» se anota discretamente con su entrada;
    «frase» es la frase completa traducida; «ninguna» muestra
    «Sin traducción en este diccionario». */
+/* r84: el parlante de la hoja lee la palabra en SU idioma.
+   El idioma de la palabra lo identifica el diccionario que
+   está dando el significado (su campo «idioma» es el de la
+   palabra: latín si manda el Latín-Español, inglés si el
+   Wikcionario inglés…); si no se conoce, el del libro. */
+const EPUB_TTS_LANG = { la: "la", es: "es-ES", en: "en-US", fr: "fr-FR", de: "de-DE", it: "it-IT", pt: "pt-PT", ca: "ca-ES", gl: "gl-ES", el: "el-GR" };
+function epubWsSpeak() {
+  const word = epubSel ? (epubCleanWord(epubSel.text) || epubSel.text || "").trim() : "";
+  if (!word || !("speechSynthesis" in window)) return;
+  let lang = "";
+  const src = (epubDefSources || []).find((x) => x.id === epubDefSelGet());
+  if (src && src.idioma) lang = src.idioma;
+  if (!lang) { try { lang = epubBookLang() || ""; } catch { lang = ""; } }
+  const u = new SpeechSynthesisUtterance(word);
+  u.lang = EPUB_TTS_LANG[lang] || lang || "es-ES";
+  if (lang) {
+    const voces = window.speechSynthesis.getVoices() || [];
+    const v = voces.find((x) => (x.lang || "").toLowerCase().replace("_", "-").startsWith(lang));
+    if (v) u.voice = v;
+  }
+  u.rate = 0.92;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(u);
+}
+
 async function epubWsTranslate() {
   if (!epubSel) return;
   const box = document.getElementById("epub-ws-trans");
@@ -9090,3 +9209,120 @@ render();
 if (splashActive) startSplash();
 refreshSession();
 refreshCatalogState();
+
+
+/* ---------- Visor de imágenes del libro ----------
+   Al picar una foto o imagen dentro del libro se abre
+   esta capa sobre todo el lector: la imagen a pantalla
+   completa, con zoom (pellizco, rueda o doble toque),
+   arrastre cuando está ampliada y una ✕ arriba a la
+   derecha para volverla normal. */
+let epubImgView = null;
+let epubImgZoom = { s: 1, x: 0, y: 0 };
+
+function epubImgViewBuild() {
+  if (epubImgView) return epubImgView;
+  const root = document.createElement("div");
+  root.id = "epub-imgview";
+  root.innerHTML =
+    '<div class="epub-imgview-stage">' +
+    '<img class="epub-imgview-img" alt="">' +
+    "</div>" +
+    '<button type="button" class="epub-imgview-close" aria-label="Cerrar">✕</button>';
+  document.body.appendChild(root);
+  const V = {
+    root,
+    stage: root.querySelector(".epub-imgview-stage"),
+    img: root.querySelector(".epub-imgview-img"),
+    moved: false,
+  };
+  epubImgView = V;
+  const apply = () => {
+    V.img.style.transform = "translate(" + epubImgZoom.x + "px," +
+      epubImgZoom.y + "px) scale(" + epubImgZoom.s + ")";
+  };
+  V.apply = apply;
+  V.reset = () => { epubImgZoom = { s: 1, x: 0, y: 0 }; apply(); };
+  V.clamp = () => {
+    epubImgZoom.s = Math.min(5, Math.max(1, epubImgZoom.s));
+    if (epubImgZoom.s === 1) { epubImgZoom.x = 0; epubImgZoom.y = 0; return; }
+    const mx = V.stage.clientWidth * epubImgZoom.s * 0.5;
+    const my = V.stage.clientHeight * epubImgZoom.s * 0.5;
+    epubImgZoom.x = Math.min(mx, Math.max(-mx, epubImgZoom.x));
+    epubImgZoom.y = Math.min(my, Math.max(-my, epubImgZoom.y));
+  };
+  root.querySelector(".epub-imgview-close")
+    .addEventListener("click", (e) => { e.stopPropagation(); epubImgViewClose(); });
+  root.addEventListener("gesturestart", (e) => e.preventDefault());
+  const ptrs = new Map();
+  let pinchD = 0;
+  V.stage.addEventListener("pointerdown", (e) => {
+    try { V.stage.setPointerCapture(e.pointerId); } catch { /* sin captura */ }
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    V.moved = false;
+    if (ptrs.size === 2) {
+      const ab = [...ptrs.values()];
+      pinchD = Math.hypot(ab[0].x - ab[1].x, ab[0].y - ab[1].y);
+    }
+  });
+  V.stage.addEventListener("pointermove", (e) => {
+    if (!ptrs.has(e.pointerId)) return;
+    const prev = ptrs.get(e.pointerId);
+    const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+    if (Math.abs(dx) + Math.abs(dy) > 2) V.moved = true;
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptrs.size === 1) {
+      if (epubImgZoom.s > 1) {
+        epubImgZoom.x += dx; epubImgZoom.y += dy;
+        V.clamp(); apply();
+      }
+    } else if (ptrs.size === 2) {
+      const ab = [...ptrs.values()];
+      const d = Math.hypot(ab[0].x - ab[1].x, ab[0].y - ab[1].y);
+      if (pinchD > 0 && d > 0) {
+        epubImgZoom.s *= d / pinchD;
+        epubImgZoom.x += dx / 2; epubImgZoom.y += dy / 2;
+        V.clamp(); apply();
+      }
+      pinchD = d;
+    }
+  });
+  const up = (e) => { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinchD = 0; };
+  V.stage.addEventListener("pointerup", up);
+  V.stage.addEventListener("pointercancel", up);
+  V.stage.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    epubImgZoom.s *= Math.exp(-e.deltaY * 0.0015);
+    V.clamp(); apply();
+  }, { passive: false });
+  V.stage.addEventListener("dblclick", (e) => {
+    e.preventDefault();
+    if (epubImgZoom.s > 1) V.reset();
+    else { epubImgZoom.s = 2.5; V.clamp(); apply(); }
+  });
+  /* Un toque simple en el fondo (fuera de la imagen) también cierra. */
+  V.stage.addEventListener("click", (e) => {
+    if (V.moved) { V.moved = false; return; }
+    if (e.target === V.stage) epubImgViewClose();
+  });
+  return V;
+}
+
+function epubImgViewOpen(src) {
+  const V = epubImgViewBuild();
+  V.reset();
+  V.img.src = src;
+  V.root.classList.add("open");
+  document.addEventListener("keydown", epubImgViewKey);
+}
+
+function epubImgViewClose() {
+  if (!epubImgView) return;
+  epubImgView.root.classList.remove("open");
+  epubImgView.img.removeAttribute("src");
+  document.removeEventListener("keydown", epubImgViewKey);
+}
+
+function epubImgViewKey(e) {
+  if (e.key === "Escape") epubImgViewClose();
+}

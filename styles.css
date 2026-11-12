@@ -1086,7 +1086,7 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
 /* Títulos y subtítulos del índice se distinguen por color
    (pedido de Sergio, 2026-11-11): títulos en amarillo,
    subtítulos en blanco. */
-.epub-toc-item.toc-n1 { color: #ffd94d; }
+.epub-toc-item.toc-n1 { color: #ff4d4d; }
 .epub-toc-item.toc-n2 { color: #ffffff; }
 
 .epub-toc-empty { margin: 4px 0; font-size: 13px; color: rgba(245,245,247,0.65); }
@@ -1314,7 +1314,7 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
 
 /* ------------ hoja inferior de UNA palabra (bottom sheet) ------ */
 .epub-wordsheet {
-  position: absolute; left: 0; right: 0; bottom: 0; z-index: 82;
+  position: absolute; left: 0; right: 0; bottom: 12px; z-index: 82;
   display: flex; flex-direction: column;
   color: #f2f2f4;
 /* r52: fondo «liquid glass» de las hojas (ver .epub-toc).
@@ -1326,7 +1326,7 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
   -webkit-backdrop-filter: blur(20px) saturate(1.5);
   backdrop-filter: blur(20px) saturate(1.5);
   border-top: 1px solid color-mix(in srgb, var(--brass) 55%, transparent);
-  border-radius: 16px 16px 0 0; box-shadow: 0 -14px 38px rgba(0,0,0,0.55);
+  border-radius: 16px; box-shadow: 0 -14px 38px rgba(0,0,0,0.55);
   transition: height .22s ease;
 }
 
@@ -1345,10 +1345,10 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
    también franja de arrastre, como el asa (ver epubWsAttach):
    touch-action none para que el gesto vertical sea del
    arrastre y no de un scroll; la × sigue siendo toque. */
-.epub-ws-head { flex-shrink: 0; display: flex; align-items: flex-start; gap: 10px; padding: 0 16px; touch-action: none; cursor: grab; }
+.epub-ws-head { flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 0 16px; touch-action: none; cursor: grab; }
 
 .epub-ws-word {
-  margin: 0; flex: 1; min-width: 0;
+  margin: 0; flex: 0 1 auto; min-width: 0; text-align: center;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 21px; font-weight: 700; text-transform: capitalize; line-height: 1.25;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1431,12 +1431,29 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
 
 /* Selector de diccionario de traducción (r19) y rótulo de la
    variante sin acentos del diccionario local. */
+.epub-ws-speak {
+  flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.08);
+  color: #f2f2f4; display: flex; align-items: center; justify-content: center;
+  padding: 0; cursor: pointer;
+}
+.epub-ws-speak:active { background: rgba(255,255,255,0.20); }
+
+/* r84: la fila del pie del cuadro de Significado: la fuente
+   a la izquierda y el selector de diccionario, pequeño y
+   solo con el idioma, abajo a la derecha. */
+.epub-ws-defrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+.epub-ws-defrow .epub-dict-src { margin: 0; flex: 1 1 auto; min-width: 0; }
+
 .epub-ws-dictsel {
   width: 100%; box-sizing: border-box; margin: 2px 0 8px;
   background: rgba(255,255,255,0.07); color: #f5f5f7;
   border: 1px solid rgba(255,255,255,0.22); border-radius: 10px;
   padding: 9px 10px; font-size: 16px;
 }
+
+/* Va DESPUÉS de la base a propósito: gana en la cascada. */
+.epub-ws-dictsel.epub-ws-dictsel-mini { width: auto; max-width: 62%; margin: 0; flex: 0 1 auto; font-size: 12.5px; padding: 3px 8px; border-radius: 8px; }
 
 .epub-dict-var {
   margin: 10px 0 4px; font-size: 12.5px; font-style: italic;
@@ -1676,3 +1693,11 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
   .ficha-in, .ficha-out { animation: none; }
   .cover-real { transition: none; }
 }
+
+
+/* Visor de imágenes del libro: pantalla completa con zoom */
+#epub-imgview { position: fixed; inset: 0; z-index: 200; background: rgba(5,5,8,.95); display: none; }
+#epub-imgview.open { display: block; }
+.epub-imgview-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: none; }
+.epub-imgview-img { max-width: 100%; max-height: 100%; object-fit: contain; will-change: transform; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
+.epub-imgview-close { position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); right: 12px; z-index: 2; width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255,255,255,.35); background: rgba(20,20,24,.6); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; }
