@@ -3918,6 +3918,149 @@ async function epubDestinoPresentacion() {
   } catch { return null; }
 }
 
+/* ---------- Silabeo propio (r87) ----------
+   La receta de Sergio (2026-11-11): las palabras de un
+   párrafo unidas por un solo espacio, el texto justificado,
+   y la palabra que no cabe partida por sus sílabas. El
+   silabeo del navegador (hyphens:auto del CSS de tema) no
+   basta: depende de diccionarios de partición que no siempre
+   están — medido en libros reales con lang e hyphens
+   correctos: 0 palabras partidas y huecos de hasta 173 px.
+   Así que el lector pone él mismo los puntos de corte: un
+   guion suave (U+00AD) entre sílaba y sílaba, invisible
+   mientras la línea no lo necesita y convertido en guioncito
+   cuando la palabra se parte. Funciona en cualquier motor,
+   sin diccionarios. La palabra partida se sigue tratando
+   ENTERA: la expansión de la palabra al tocarla salta el
+   guion suave (EPUB_WORD_CH) y la limpieza lo quita
+   (epubCleanWord, epubOnSelected). De momento silabean el
+   español y el latín, con sus reglas; los demás idiomas
+   siguen con el hyphens:auto del tema. */
+const EPUB_SHY = "\u00AD";
+const epubShyCache = new Map();
+
+/* Cortes silábicos de una palabra (posiciones de letra donde
+   puede partirse), o null si no se puede/no hace falta. */
+function epubSilabasDe(palabra, lang) {
+  const w = palabra.toLowerCase();
+  const N = w.length;
+  const FUERTE = "aeoáéó";
+  const DEBIL_AC = "íú";
+  const esVocal = (c) => FUERTE.includes(c) || "iuü".includes(c) || DEBIL_AC.includes(c) || (lang === "la" && c === "y");
+  /* Unidades: dígrafos consonánticos (ch, ll, rr; en latín
+     también ph, th), «qu» y «gu» ante e/i como una unidad, y
+     cada vocal suelta. */
+  const U = [];
+  let i = 0;
+  while (i < N) {
+    const c = w[i], c2 = w[i + 1] || "";
+    if (lang === "es" && ((c === "c" && c2 === "h") || (c === "l" && c2 === "l") || (c === "r" && c2 === "r"))) { U.push({ ini: i, cons: true }); i += 2; continue; }
+    if (lang === "la" && ((c === "c" && c2 === "h") || (c === "p" && c2 === "h") || (c === "t" && c2 === "h"))) { U.push({ ini: i, cons: true }); i += 2; continue; }
+    if (c === "q" && c2 === "u") { U.push({ ini: i, cons: true }); i += 2; continue; }
+    if (lang === "es" && c === "g" && c2 === "u" && "eéií".includes(w[i + 2] || "")) { U.push({ ini: i, cons: true }); i += 2; continue; }
+    if (esVocal(c)) { U.push({ ini: i, cons: false }); i += 1; continue; }
+    if (lang === "es" && c === "y") {
+      const prevV = i > 0 && esVocal(w[i - 1]);
+      const nextV = i + 1 < N && esVocal(w[i + 1]);
+      U.push({ ini: i, cons: !(prevV && !nextV) });
+      i += 1; continue;
+    }
+    U.push({ ini: i, cons: true }); i += 1;
+  }
+  /* ¿Hiato entre dos vocales vecinas? En español: dos fuertes
+     o una débil acentuada rompen el diptongo. En latín solo
+     son diptongo ae, oe, au, ei, eu, ui. */
+  const SEP = (a, b) => {
+    if (lang === "la") { const p = a + b; return !(p === "ae" || p === "oe" || p === "au" || p === "ei" || p === "eu" || p === "ui"); }
+    if (DEBIL_AC.includes(a) || DEBIL_AC.includes(b)) return true;
+    return FUERTE.includes(a) && FUERTE.includes(b);
+  };
+  const nucleos = [];
+  let k = 0;
+  while (k < U.length) {
+    if (U[k].cons) { k++; continue; }
+    let j = k;
+    while (j + 1 < U.length && !U[j + 1].cons && (j - k) < 2 && !SEP(w[U[j].ini], w[U[j + 1].ini])) j++;
+    nucleos.push({ desde: k, hasta: j });
+    k = j + 1;
+  }
+  if (nucleos.length < 2) return null;
+  const INSEP = (a, b) => ("pbtdcgf".includes(a) && b === "r") || ("pbcgf".includes(a) && b === "l");
+  const unaLetra = (u) => (U[u + 1] ? U[u + 1].ini : N) - U[u].ini === 1;
+  const cortes = [];
+  for (let n = 0; n + 1 < nucleos.length; n++) {
+    const eIni = nucleos[n].hasta + 1;
+    const eFin = nucleos[n + 1].desde - 1;
+    const cuenta = eFin - eIni + 1;
+    let lleva;
+    if (cuenta <= 1) lleva = cuenta;
+    else if (cuenta === 2) lleva = (U[eIni].cons && U[eFin].cons && unaLetra(eIni) && unaLetra(eFin) && INSEP(w[U[eIni].ini], w[U[eFin].ini])) ? 2 : 1;
+    else if (cuenta === 3) lleva = (unaLetra(eFin - 1) && unaLetra(eFin) && INSEP(w[U[eFin - 1].ini], w[U[eFin].ini])) ? 2 : 1;
+    else lleva = cuenta - 2;
+    cortes.push(U[nucleos[n + 1].desde - lleva].ini);
+  }
+  return cortes;
+}
+
+function epubConCortes(palabra, lang) {
+  if (palabra.length < 5) return palabra;
+  if (palabra === palabra.toUpperCase() && palabra !== palabra.toLowerCase()) return palabra; /* siglas intactas */
+  const clave = lang + "|" + palabra.toLowerCase();
+  let cortes = epubShyCache.get(clave);
+  if (cortes === undefined) { cortes = epubSilabasDe(palabra, lang); epubShyCache.set(clave, cortes); }
+  if (!cortes) return palabra;
+  let out = "", pos = 0;
+  for (const c of cortes) {
+    if (c < 2 || palabra.length - c < 2) continue; /* nada de fragmentos de una letra */
+    out += palabra.slice(pos, c) + EPUB_SHY;
+    pos = c;
+  }
+  return out + palabra.slice(pos);
+}
+
+/* Recorre el texto de la sección: une los espacios repetidos
+   (un solo espacio entre palabras) y pone los puntos de
+   corte silábico. Fuera: títulos h1–h3 (como manda la regla
+   del tema) y lo preformateado. Una sola pasada por
+   documento; los re-estilos del mismo documento la saltan. */
+function epubSilabearDoc(doc) {
+  if (!doc || doc.__mgShyDone || !doc.body) return;
+  /* El idioma se lee como en epubStyleContents: lang O
+     xml:lang. La primera versión leía solo «lang» y los
+     libros que declaran únicamente xml:lang (el «Vida de Don
+     Quijote y Sancho» de Unamuno de la captura de Sergio,
+     2026-11-11) se quedaban SIN un solo punto de corte: ni
+     una palabra se partía en todo el libro. Si el documento
+     no declara ninguno, manda el idioma del libro. */
+  let lang = ((doc.documentElement.getAttribute("lang") || doc.documentElement.getAttribute("xml:lang") || "") + "").trim().toLowerCase().split(/[-_]/)[0];
+  if (!lang) lang = (((typeof epubBookLang === "function" ? epubBookLang() : null) || (typeof epubCurrent !== "undefined" && epubCurrent && epubCurrent.idioma) || "") + "").trim().toLowerCase().split(/[-_]/)[0];
+  if (lang !== "es" && lang !== "la") return;
+  doc.__mgShyDone = true;
+  const win = doc.defaultView;
+  const NF = win.NodeFilter;
+  const walker = doc.createTreeWalker(doc.body, NF.SHOW_TEXT, {
+    acceptNode: (n) => {
+      if (!n.nodeValue || n.nodeValue.length < 5) return NF.FILTER_REJECT;
+      let el = n.parentElement;
+      while (el && el !== doc.body) {
+        const tag = el.tagName;
+        if (tag === "PRE" || tag === "CODE" || tag === "SCRIPT" || tag === "STYLE" || tag === "H1" || tag === "H2" || tag === "H3") return NF.FILTER_REJECT;
+        el = el.parentElement;
+      }
+      return NF.FILTER_ACCEPT;
+    },
+  });
+  const nodos = [];
+  let nd;
+  while ((nd = walker.nextNode())) nodos.push(nd);
+  const RE = /[A-Za-zÁÉÍÓÚÜÑáéíóúüñÀ-ÿ]+/g;
+  for (const nodo of nodos) {
+    let nuevo = nodo.nodeValue.replace(/[ \t]{2,}/g, " ");
+    nuevo = nuevo.replace(RE, (w) => epubConCortes(w, lang));
+    if (nuevo !== nodo.nodeValue) nodo.nodeValue = nuevo;
+  }
+}
+
 function epubStyleContents(contents) {
   epubApplyThemeToDoc(contents);
   const doc = contents && contents.document;
@@ -3952,6 +4095,10 @@ function epubStyleContents(contents) {
       if (bl) root.setAttribute("lang", bl);
     }
   } catch { /* documento sin raíz accesible: sin silabeo en esta sección */ }
+  /* Silabeo propio (r87): con el idioma ya puesto, el lector
+     coloca sus puntos de corte — el hyphens:auto del tema no
+     parte sin diccionarios del motor (ver epubSilabearDoc). */
+  try { epubSilabearDoc(doc); } catch { /* sección sin silabeo propio */ }
   /* Selección: epub.js avisa con su evento «selected», pero en
      táctil (iOS) la selección se consolida tras soltar los
      tiradores; estos escuchas propios con espera cubren ese caso
@@ -4168,7 +4315,7 @@ function epubSheetWatchStop() {
    caret del propio documento del ePub (mismo origen):
    caretRangeFromPoint en WebKit, caretPositionFromPoint en
    Chromium/Firefox. Devuelve el Range de la palabra completa. */
-const EPUB_WORD_CH = /[A-Za-zÁÉÍÓÚÜÑáéíóúüñÀ-ÿ0-9'’_-]/;
+const EPUB_WORD_CH = /[A-Za-zÁÉÍÓÚÜÑáéíóúüñÀ-ÿ0-9'’_­-]/;
 
 function epubWordRangeAt(doc, x, y) {
   let node = null;
@@ -7809,7 +7956,7 @@ function epubHide(id) {
 }
 
 function epubOnSelected(raw, cfiRange) {
-  const text = String(raw || "").trim().replace(/\s+/g, " ");
+  const text = String(raw || "").replace(/\u00AD/g, "").trim().replace(/\s+/g, " ");
   /* 1200 caracteres: cabe un pasaje largo de muchas palabras (r16);
      el tope sigue ahí para no arrastrar selecciones patológicas. */
   if (!text || text.length > 1200) return;
@@ -9150,7 +9297,7 @@ async function epubWsTranslate() {
 
 function epubCleanWord(raw) {
   if (!raw) return "";
-  const first = raw.trim().split(/\s+/)[0] || "";
+  const first = raw.replace(/\u00AD/g, "").trim().split(/\s+/)[0] || "";
   return first
     .replace(/^[«"“”'‘’(\[{¡!¿?.,;:…—-]+/, "")
     .replace(/[»"“”'‘’)\]}¡!¿?.,;:…—-]+$/, "")
