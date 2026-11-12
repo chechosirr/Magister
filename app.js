@@ -7002,7 +7002,7 @@ function epubReturnRender() {
         f.style.height = snap.frameH + "px";
         f.style.transform = "translateX(" + snap.offX + "px)";
         if (f.__mgHtmlMalo === snap.html) { thumb.hidden = true; }
-        else if (f.__mgHtml !== snap.html) { f.__mgHtml = snap.html; f.srcdoc = snap.html; epubThumbVerificar(f, thumb); }
+        else if (f.__mgHtml !== snap.html || f.__mgTema !== epubThemeName) { f.__mgHtml = snap.html; f.__mgTema = epubThemeName; f.srcdoc = epubThumbHtmlConTema(snap.html); epubThumbVerificar(f, thumb); }
       }
       /* Que la miniatura no se salga por los bordes de la barra. */
       const track = document.getElementById("epub-prog-track");
@@ -7018,6 +7018,32 @@ function epubReturnRender() {
       }
     }
   }
+}
+
+/* r88 (Sergio, 2026-11-12): la foto del punto de vuelta se
+   serializó con el tema que había CUANDO SE TOMÓ; al cambiar
+   de tema, la página viva cambiaba de color pero la miniatura
+   seguía pintando con el tema anterior. La foto es el
+   documento de la sección con su <style
+   id="magister-epub-theme"> dentro: al pintarla, ese estilo
+   se sustituye por el del tema VIGENTE — la misma receta que
+   epubApplyThemeToDoc aplica a las páginas vivas — y
+   epubToggleTheme vuelve a pintar la miniatura al cambiar. */
+function epubThumbHtmlConTema(html) {
+  try {
+    const t = EPUB_THEMES[epubThemeName] || EPUB_THEMES.oscuro;
+    const estilo = '<style id="magister-epub-theme">'
+      + epubThemeCssText(t) + "</style>";
+    if (/<style id="magister-epub-theme">[\s\S]*?<\/style>/.test(html)) {
+      return html.replace(
+        /<style id="magister-epub-theme">[\s\S]*?<\/style>/,
+        () => estilo);
+    }
+    if (html.indexOf("</head>") >= 0) {
+      return html.replace("</head>", () => estilo + "</head>");
+    }
+    return html;
+  } catch { return html; }
 }
 
 /* r77: la miniatura solo se queda si su foto PINTA de verdad.
@@ -7435,6 +7461,9 @@ function epubToggleTheme() {
   /* r64: las capas del volteo se visten del tema nuevo en
      este mismo paso, sin esperar a la reconstrucción. */
   epubCurlApplyTheme();
+  /* r88: la miniatura del punto de vuelta también se viste
+     del tema nuevo en este mismo paso. */
+  try { epubReturnRender(); } catch { /* sin punto, nada que repintar */ }
   epubPoke();
   epubCurlPoolSchedule();
 }
