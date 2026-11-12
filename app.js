@@ -6216,6 +6216,108 @@ async function epubPrecargar(book) {
   } catch { if (epubPrecarga === mio) epubPrecarga = null; }
 }
 
+/* r89 (Sergio, 2026-11-12): «¿Puede esa carga quedar guardada
+   en el teléfono para que la segunda vez abra rápido?» — el
+   libro queda guardado EN EL TELÉFONO (IndexedDB) tras la
+   primera descarga. Al reabrir, el lector NO lo descarga otra
+   vez: pregunta al servicio con el ETag del ejemplar guardado
+   y, si no cambió, el servicio responde 304 sin cuerpo y se
+   lee lo guardado (la pregunta son unos cientos de bytes
+   contra los megas del libro). Si el ejemplar cambió en la
+   bodega, baja el nuevo y se guarda. Sin conexión, se lee lo
+   guardado tal cual: los libros descargados se pueden leer
+   sin internet. Las reglas de acceso son las de la caché de
+   memoria de siempre: el guardado solo vale para la misma
+   cuenta y el mismo estado de suscripción en que se bajó, y
+   un 401/403 del servicio nunca se salta sirviendo lo
+   guardado. Topes: libros de hasta 12 MB, 10 libros y 100 MB
+   en total; al pasarlos sale el más antiguo. Todo es
+   oportunista: si el aparato no deja guardar, la apertura
+   sigue por la vía normal. */
+const EPUB_DISCO_MAX_LIBRO = 12 * 1024 * 1024;
+const EPUB_DISCO_MAX_TOTAL = 100 * 1024 * 1024;
+const EPUB_DISCO_MAX_N = 10;
+let epubDiscoDB = null;
+function epubDiscoAbrir() {
+  if (epubDiscoDB) return epubDiscoDB;
+  epubDiscoDB = new Promise((resolve) => {
+    try {
+      const req = window.indexedDB.open("magister-libros", 1);
+      req.onupgradeneeded = () => {
+        try { req.result.createObjectStore("epub", { keyPath: "gid" }); } catch { /* ya existe */ }
+      };
+      req.onsuccess = () => {
+        try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch { /* solo una petición */ }
+        resolve(req.result);
+      };
+      req.onerror = () => resolve(null);
+      req.onblocked = () => resolve(null);
+    } catch { resolve(null); }
+  });
+  return epubDiscoDB;
+}
+async function epubDiscoLeer(gid) {
+  const db = await epubDiscoAbrir();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const req = db.transaction("epub", "readonly").objectStore("epub").get(gid);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    } catch { resolve(null); }
+  });
+}
+async function epubDiscoGuardar(rec) {
+  const db = await epubDiscoAbrir();
+  if (!db) return;
+  await new Promise((resolve) => {
+    try {
+      const tx = db.transaction("epub", "readwrite");
+      tx.objectStore("epub").put(rec);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+      tx.onabort = () => resolve();
+    } catch { resolve(); }
+  });
+  epubDiscoPodar(rec.gid);
+}
+async function epubDiscoPodar(intocable) {
+  const db = await epubDiscoAbrir();
+  if (!db) return;
+  const todos = await new Promise((resolve) => {
+    try {
+      const req = db.transaction("epub", "readonly").objectStore("epub").getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    } catch { resolve([]); }
+  });
+  let total = 0;
+  for (const r of todos) total += (r && r.bytes) ? r.bytes.byteLength : 0;
+  if (todos.length <= EPUB_DISCO_MAX_N && total <= EPUB_DISCO_MAX_TOTAL) return;
+  const viejos = todos.slice().sort((a, b) => (a.fecha || 0) - (b.fecha || 0));
+  for (const r of viejos) {
+    if (todos.length <= EPUB_DISCO_MAX_N && total <= EPUB_DISCO_MAX_TOTAL) break;
+    if (!r || r.gid === intocable) continue;
+    await new Promise((resolve) => {
+      try {
+        const tx = db.transaction("epub", "readwrite");
+        tx.objectStore("epub").delete(r.gid);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+        tx.onabort = () => resolve();
+      } catch { resolve(); }
+    });
+    todos.splice(todos.indexOf(r), 1);
+    total -= r.bytes ? r.bytes.byteLength : 0;
+  }
+}
+function epubDiscoVale(rec, gid, emailKey) {
+  return !!(rec && rec.gid === gid && rec.bytes
+    && rec.email === emailKey
+    && rec.sub === !!(user && user.subscribed)
+    && rec.admin === !!(user && user.admin));
+}
+
 async function epubFetchCurrent() {
   if (!token) throw new Error(T("Inicia sesión para leer este libro."));
   const emailKey = String((user && user.email) || "").toLowerCase();
@@ -6239,6 +6341,44 @@ async function epubFetchCurrent() {
     }
     return precB.bytes;
   }
+  /* r89: copia guardada en el teléfono. Se revalida con el
+     ETag: 304 = el ejemplar no cambió y se lee lo guardado
+     sin descargar; 200 = ejemplar nuevo, se usa y se guarda;
+     sin conexión = se lee lo guardado; un error de acceso
+     (401/403) NO se salta: cae al flujo normal, que da el
+     aviso que corresponde. */
+  const disco = await epubDiscoLeer(epubCurrent.gid);
+  if (epubDiscoVale(disco, epubCurrent.gid, emailKey)) {
+    let resD = null;
+    try {
+      resD = await fetch(MAGISTER_API_BASE + "/leer/" + epubCurrent.gid, {
+        headers: { Authorization: "Bearer " + token, "If-None-Match": disco.etag || "" },
+      });
+    } catch { resD = null; }
+    if (!resD || resD.status === 304) {
+      epubCurrent.acceso = disco.acceso || "completo";
+      if (resD) epubDiscoGuardar(Object.assign({}, disco, { fecha: Date.now() }));
+      epubBytesCache = { gid: epubCurrent.gid, email: emailKey,
+        sub: !!(user && user.subscribed), admin: !!(user && user.admin),
+        acceso: epubCurrent.acceso, bytes: disco.bytes };
+      return disco.bytes;
+    }
+    if (resD.ok) {
+      epubCurrent.acceso = resD.headers.get("X-Magister-Acceso") || "completo";
+      const nb = await resD.arrayBuffer();
+      if (nb.byteLength <= EPUB_DISCO_MAX_LIBRO) {
+        epubBytesCache = { gid: epubCurrent.gid, email: emailKey,
+          sub: !!(user && user.subscribed), admin: !!(user && user.admin),
+          acceso: epubCurrent.acceso, bytes: nb };
+        epubDiscoGuardar({ gid: epubCurrent.gid, email: emailKey,
+          sub: !!(user && user.subscribed), admin: !!(user && user.admin),
+          acceso: epubCurrent.acceso, etag: resD.headers.get("ETag") || "",
+          bytes: nb, fecha: Date.now() });
+      }
+      return nb;
+    }
+    /* otro estado (401/403/5xx): sigue el flujo normal */
+  }
   let res;
   try {
     res = await fetch(MAGISTER_API_BASE + "/leer/" + epubCurrent.gid, {
@@ -6256,6 +6396,11 @@ async function epubFetchCurrent() {
     epubBytesCache = { gid: epubCurrent.gid, email: emailKey,
       sub: !!(user && user.subscribed), admin: !!(user && user.admin),
       acceso: epubCurrent.acceso, bytes };
+    /* r89: y queda guardado en el teléfono para la próxima vez */
+    epubDiscoGuardar({ gid: epubCurrent.gid, email: emailKey,
+      sub: !!(user && user.subscribed), admin: !!(user && user.admin),
+      acceso: epubCurrent.acceso, etag: res.headers.get("ETag") || "",
+      bytes, fecha: Date.now() });
   }
   return bytes;
 }
