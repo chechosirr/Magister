@@ -358,6 +358,13 @@ h1.view-title.center { text-align: center; }
 .count-grid .num { font-size: 20px; font-weight: 900; }
 .count-grid .lab { margin-top: 2px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim); }
 .sub-box { margin-top: 24px; border-radius: var(--radius); border: 1px solid var(--border); padding: 16px; }
+/* r90: selector de voz de pronunciación (Sofía/César) en «Crear cuenta» */
+.voz-q { display: block; font-size: 14px; font-weight: 500; margin-bottom: 8px; }
+.voz-opts { display: flex; gap: 10px; }
+.voz-opt { flex: 1; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); padding: 10px 12px; font-size: 15px; font-weight: 700; color: var(--text); text-align: center; cursor: pointer; }
+.voz-opt .voz-gen { display: block; font-size: 12px; font-weight: 500; color: var(--dim); margin-top: 2px; }
+.voz-opt.sel { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.voz-opt.sel .voz-gen { color: var(--accent-ink); opacity: 0.85; }
 .sub-pill { border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 700; }
 .sub-pill.on { background: var(--shelf); color: #fff; }
 .sub-pill.off { background: var(--surface-2); color: var(--dim); }
@@ -1435,7 +1442,7 @@ main.epub-main { margin: 0; max-width: none; padding: 0; }
   flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%;
   border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.08);
   color: #f2f2f4; display: flex; align-items: center; justify-content: center;
-  padding: 0; cursor: pointer;
+  padding: 0; cursor: pointer; position: relative;
 }
 .epub-ws-speak:active { background: rgba(255,255,255,0.20); }
 

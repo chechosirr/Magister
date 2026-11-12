@@ -109,8 +109,9 @@ async function apiCall(path, { method = "GET", body, token: tk } = {}) {
 
 const api = {
   login: (email, password) => apiCall("/auth/login", { method: "POST", body: { email, password } }),
-  register: (name, email, password) => apiCall("/auth/registro", { method: "POST", body: { name, email, password } }),
+  register: (name, email, password, voz) => apiCall("/auth/registro", { method: "POST", body: { name, email, password, voz: voz === "cesar" ? "cesar" : "sofia" } }),
   me: (tk) => apiCall("/auth/me", { token: tk }),
+  changeVoz: (tk, voz) => apiCall("/auth/voz", { method: "POST", body: { voz }, token: tk }),
   changeEmail: (tk, email) => apiCall("/auth/correo", { method: "POST", body: { email }, token: tk }),
   changePassword: (tk, actual, nueva) => apiCall("/auth/password", { method: "POST", body: { actual, nueva }, token: tk }),
   logout: (tk) => apiCall("/auth/logout", { method: "POST", token: tk }),
@@ -121,6 +122,13 @@ const api = {
   getBookDetail: (tk, bookId) => apiCall(`/books/${bookId}`, { token: tk }),
   getChapter: (tk, bookId, chapterIndex) => apiCall(`/books/${bookId}/chapters/${chapterIndex}`, { token: tk }),
 };
+
+/* r90: las voces de pronunciación propias — Sofía (femenina)
+   y César (masculina). La cuenta guarda la elegida en su
+   campo «voz» (las cuentas anteriores valen «sofia») y el
+   parlante del diccionario la pide al servicio de voz. */
+function vozNombre(v) { return v === "cesar" ? "César" : "Sofía"; }
+function cuentaVoz() { return user && user.voz === "cesar" ? "cesar" : "sofia"; }
 
 /* ------------------------------------------------- catálogo completo
    (r68) Las categorías se alimentan del catálogo real de
@@ -312,7 +320,7 @@ function ensureCatSearch(q) {
 /* ------------------------------------------------------------ estado */
 
 let token = loadToken();
-let user = null;               // {id, name, email, subscribed, admin} cuando hay sesión
+let user = null;               // {id, name, email, subscribed, admin, voz} cuando hay sesión
 let libraryEntries = [];       // biblioteca personal (del servicio)
 let view = { name: "home" };   // home | library | categories | search | account | detail | reader | chat | epub
 let viewHistory = [];          // pila de vistas para la flecha de volver del header
@@ -325,6 +333,9 @@ let authError = "";
 let authBusy = false;
 let authMode = "login";        // r49: «Mi cuenta» sin sesión muestra entrar o crear cuenta
 let regError = "";
+let regVoz = "sofia";          // r90: voz de pronunciación elegida en «Crear cuenta» (Sofía por defecto)
+let cuentaVozMsg = "";         // r90: aviso breve tras cambiar la voz en «Mi cuenta»
+let cuentaVozBusy = false;
 let settingsMsg = null;        // r35: aviso de «Ajustes de cuenta» {area: "email"|"pass", ok, text}
 let settingsBusy = false;
 let sampleNoticeBookId = null; // r35: libro pendiente tras el aviso de prueba (cuenta sin suscripción)
@@ -963,6 +974,13 @@ function accountHtml() {
             <label for="reg-password2">Repite la contraseña</label>
             <input id="reg-password2" type="password" required minlength="6" autocomplete="new-password" placeholder="Repite tu contraseña">
           </div>
+          <div class="field">
+            <span class="voz-q" id="reg-voz-q">¿Qué voz quieres que pronuncie las palabras?</span>
+            <div class="voz-opts" role="radiogroup" aria-labelledby="reg-voz-q">
+              <button type="button" class="voz-opt${regVoz === "sofia" ? " sel" : ""}" data-action="reg-voz" data-voz="sofia" role="radio" aria-checked="${regVoz === "sofia"}">Sofía<span class="voz-gen">femenina</span></button>
+              <button type="button" class="voz-opt${regVoz === "cesar" ? " sel" : ""}" data-action="reg-voz" data-voz="cesar" role="radio" aria-checked="${regVoz === "cesar"}">César<span class="voz-gen">masculina</span></button>
+            </div>
+          </div>
           ${regError ? `<p role="alert" class="form-error">${esc(regError)}</p>` : ""}
           <button type="submit" class="btn-primary block" ${authBusy ? "disabled" : ""}>${authBusy ? "Un momento…" : "Crear cuenta"}</button>
           <button type="button" class="forgot-link" data-action="goto-login">¿Ya tienes cuenta? Iniciar sesión</button>
@@ -1022,11 +1040,38 @@ function accountHtml() {
           : "Con tu cuenta lees gratis el primer capítulo de cada libro. La suscripción a Magister abre la lectura completa de toda la biblioteca: pídela por el chat y te la activamos."}</p>
         ${!user.subscribed && !user.admin ? `<button type="button" class="btn-primary block" style="margin-top:14px" data-action="subscribe-chat">Suscríbete a Magister</button>` : ""}
       </div>
+      <div class="sub-box">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <h2 class="font-display" style="margin:0;font-size:16px;font-weight:700">Voz de pronunciación: ${vozNombre(cuentaVoz())}</h2>
+          <span class="sub-pill on">${cuentaVoz() === "cesar" ? "Masculina" : "Femenina"}</span>
+        </div>
+        <p class="small dim" style="margin:8px 0 0;line-height:1.625">Es la voz que pronuncia las palabras cuando tocas el parlante en el diccionario de un libro.</p>
+        <button type="button" class="btn-ghost" style="width:100%;margin-top:14px" data-action="cuenta-voz" ${cuentaVozBusy ? "disabled" : ""}>${cuentaVozBusy ? "Un momento…" : "Cambiar a " + vozNombre(cuentaVoz() === "cesar" ? "sofia" : "cesar")}</button>
+        ${cuentaVozMsg ? `<p class="form-note" style="margin:12px 0 0">${esc(cuentaVozMsg)}</p>` : ""}
+      </div>
       <button type="button" class="btn-primary block" style="margin-top:24px" data-action="goto-library">Ir a tu biblioteca</button>
       <button type="button" class="btn-ghost" style="width:100%;margin-top:12px" data-action="goto-settings">Ajustes de cuenta</button>
     </section>
     <button type="button" class="btn-logout" data-action="logout">Cerrar sesión</button>
   </div>`;
+}
+
+/* r90: cambiar la voz de pronunciación de la cuenta
+   (Sofía ⇄ César) desde «Mi cuenta». El servicio la guarda
+   en la cuenta y el parlante del diccionario usa la nueva
+   sin recargar la sesión. */
+async function cuentaVozCambiar() {
+  if (!user || !token || cuentaVozBusy) return;
+  const nueva = cuentaVoz() === "cesar" ? "sofia" : "cesar";
+  cuentaVozBusy = true; cuentaVozMsg = ""; render();
+  try {
+    const r = await api.changeVoz(token, nueva);
+    if (r && r.user) user = r.user; else user.voz = nueva;
+    cuentaVozMsg = "Tu voz de pronunciación ahora es " + vozNombre(cuentaVoz()) + ".";
+  } catch (err) {
+    cuentaVozMsg = errorText(err);
+  }
+  cuentaVozBusy = false; render();
 }
 
 /* r35: «Ajustes de cuenta» para CUALQUIER cuenta con sesión (no
@@ -2213,6 +2258,18 @@ document.addEventListener("click", async (e) => {
      formulario de entrar. Solo cambian el modo del panel. */
   else if (action === "goto-register") { authMode = "register"; authError = ""; regError = ""; render(); }
   else if (action === "goto-login") { authMode = "login"; authError = ""; regError = ""; render(); }
+  /* r90: elegir la voz en «Crear cuenta» NO repinta el
+     formulario (se perdería lo ya escrito): se marca en el
+     sitio y el valor viaja al enviar el registro. */
+  else if (action === "reg-voz") {
+    regVoz = el.dataset.voz === "cesar" ? "cesar" : "sofia";
+    document.querySelectorAll('[data-action="reg-voz"]').forEach((b) => {
+      const on = b.dataset.voz === regVoz;
+      b.classList.toggle("sel", on);
+      b.setAttribute("aria-checked", on ? "true" : "false");
+    });
+  }
+  else if (action === "cuenta-voz") cuentaVozCambiar();
   else if (action === "subscribe") go({ name: "account" });
   else if (action === "read") openChapter(id, Number(el.dataset.ch || 0));
   else if (action === "reader-exit") goBack();
@@ -2396,7 +2453,7 @@ document.addEventListener("submit", async (e) => {
     if (pass !== pass2) { regError = "Las contraseñas no coinciden."; render(); return; }
     authBusy = true; render();
     try {
-      const r = await api.register(name, email, pass);
+      const r = await api.register(name, email, pass, regVoz);
       saveToken(r.token); token = r.token; user = r.user;
       const lib = await api.myLibrary(token);
       libraryEntries = lib.entries || [];
@@ -9353,13 +9410,140 @@ async function epubDictSelSync() {
    palabra: latín si manda el Latín-Español, inglés si el
    Wikcionario inglés…); si no se conoce, el del libro. */
 const EPUB_TTS_LANG = { la: "la", es: "es-ES", en: "en-US", fr: "fr-FR", de: "de-DE", it: "it-IT", pt: "pt-PT", ca: "ca-ES", gl: "gl-ES", el: "el-GR" };
-function epubWsSpeak() {
+/* r90 (pedido de Sergio): el parlante pide la palabra a las
+   voces propias del servidor — Sofía o César, la elegida en
+   la cuenta (si no se manda «voz», el servicio usa la de la
+   cuenta) — con el idioma de la palabra. Mientras el audio
+   llega, el botón baja su opacidad sin bloquear la hoja.
+
+   r90p2 — por qué en el iPhone «seguía sonando la voz
+   vieja»: la r90p1 creaba un elemento Audio NUEVO después
+   del «await fetch» (ya fuera del gesto del toque) y
+   llamaba a play() sobre él: la política de sonido de iOS
+   rechaza ese play() por no nacer de un gesto, y el
+   rechazo se tragaba en un catch vacío, así que el MP3 del
+   servicio nunca llegaba a sonar. Y cuando la petición en
+   sí fallaba (sin sesión válida en la preview, red,
+   no-200, blob vacío), epubWsSpeak caía al respaldo y
+   sonaba la voz del teléfono. Arreglo: UN SOLO elemento de
+   audio, persistente, creado y «bendecido» (suena un
+   silencio de 25 ms) DENTRO del manejador del toque; al
+   llegar el blob se pone su src en ESE MISMO elemento y el
+   play() ya está permitido. El respaldo a la voz del
+   teléfono salta SOLO si falla la petición; un play()
+   rechazado se reintenta una vez tras load() y, si aun
+   así no suena, queda anotado en consola y NO se
+   sustituye por la voz vieja en ese toque. */
+let epubVozAudio = null;
+let epubVozUrl = "";
+const epubVozDiag = { creadosEnGesto: 0, playsOk: 0, playsRechazados: 0 };
+/* Silencio WAV de 25 ms (8 kHz, 8 bit): lo que suena al
+   bendecir el elemento dentro del gesto. */
+const EPUB_VOZ_SILENCIO = "data:audio/wav;base64,UklGRuwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YcgAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgAg==";
+
+/* Crea (una sola vez) el elemento de audio del parlante y
+   lo bendice si aún no lo está. Hay que llamarla desde un
+   gesto (el toque del parlante o un pointerdown en la
+   hoja): la bendición consiste en hacer sonar el silencio
+   en ese instante, y eso es lo que iOS recuerda después.
+   Devuelve el elemento, o null si el motor no tiene
+   Audio. */
+function epubVozBendecir() {
+  try {
+    if (!epubVozAudio) {
+      epubVozAudio = new Audio();
+      epubVozAudio.preload = "auto";
+      epubVozDiag.creadosEnGesto++;
+    }
+    const a = epubVozAudio;
+    if (!a.__mgBendecido) {
+      a.__mgBendecido = true;
+      try { a.pause(); } catch { /* aún no sonaba nada */ }
+      a.src = EPUB_VOZ_SILENCIO;
+      const p = a.play();
+      if (p && p.catch) p.catch((e) => { if (e && e.name === "NotAllowedError") a.__mgBendecido = false; /* ni con gesto: se reintentará en el próximo toque */ });
+    }
+    return a;
+  } catch { return null; }
+}
+
+/* Refuerzo: el primer pointerdown sobre la hoja de palabra
+   ya deja el elemento creado y bendecido, antes incluso de
+   que el dedo llegue al parlante. */
+document.addEventListener("pointerdown", (e) => {
+  try { if (e.target && e.target.closest && e.target.closest("#epub-wordsheet")) epubVozBendecir(); } catch { /* hoja aún no pintada */ }
+}, { passive: true });
+
+/* Reproduce en el elemento único. Un rechazo de play() NO
+   es un fallo de la petición: se reintenta una vez tras
+   load() y, si el motor sigue negándose, se anota en
+   consola y se devuelve false SIN tocar el respaldo (la
+   voz vieja sonando sería peor señal que un toque sin
+   sonido). */
+async function epubVozPlay(a) {
+  try { await a.play(); epubVozDiag.playsOk++; return true; }
+  catch {
+    try { a.load(); } catch { /* elemento quisquilloso */ }
+    try { await a.play(); epubVozDiag.playsOk++; return true; }
+    catch (e2) {
+      epubVozDiag.playsRechazados++;
+      try { console.warn("[voz] el motor rechazó la reproducción:", (e2 && e2.name) || e2); } catch { /* sin consola */ }
+      return false;
+    }
+  }
+}
+
+/* Pide la palabra al servicio y la suena en el elemento
+   único. Devuelve { ok:false } SOLO si falla la petición
+   (sin sesión, red, no-200, blob vacío o motor sin
+   elemento de audio): es el único caso en que epubWsSpeak
+   cae a la voz del teléfono. Con la petición buena
+   devuelve { ok:true, voz, sono }. */
+async function epubVozServidor(word, idioma) {
+  if (!token) return { ok: false };
+  let r;
+  try {
+    r = await fetch(MAGISTER_API_BASE + "/voz/pronunciar?palabra=" + encodeURIComponent(word) + "&idioma=" + encodeURIComponent(idioma), {
+      headers: { Authorization: "Bearer " + token },
+    });
+  } catch { return { ok: false }; }
+  if (!r.ok) return { ok: false };
+  let blob;
+  try { blob = await r.blob(); } catch { return { ok: false }; }
+  if (!blob || !blob.size) return { ok: false };
+  const voz = (r.headers.get("X-Magister-Voz") || "").toLowerCase();
+  const a = epubVozAudio || epubVozBendecir();
+  if (!a) return { ok: false };
+  const url = URL.createObjectURL(blob);
+  if (epubVozUrl) { try { URL.revokeObjectURL(epubVozUrl); } catch { /* ya liberada */ } }
+  epubVozUrl = url;
+  try { a.pause(); } catch { /* sonaba el silencio de la bendición */ }
+  a.src = url;
+  const sono = await epubVozPlay(a);
+  return { ok: true, voz, sono };
+}
+
+async function epubWsSpeak() {
   const word = epubSel ? (epubCleanWord(epubSel.text) || epubSel.text || "").trim() : "";
-  if (!word || !("speechSynthesis" in window)) return;
+  if (!word) return;
+  epubVozBendecir(); /* dentro del gesto del toque: crea y bendice el elemento único */
   let lang = "";
   const src = (epubDefSources || []).find((x) => x.id === epubDefSelGet());
   if (src && src.idioma) lang = src.idioma;
   if (!lang) { try { lang = epubBookLang() || ""; } catch { lang = ""; } }
+  const idioma = ["es", "la", "en", "fr", "it", "pt", "de", "ca"].includes(lang) ? lang : "es";
+  const btn = document.querySelector(".epub-ws-speak");
+  if (btn) btn.style.opacity = "0.45";
+  const res = await epubVozServidor(word, idioma);
+  if (btn) btn.style.opacity = "";
+  if (!res.ok) { epubWsSpeakTelefono(word, lang); return; }
+}
+
+/* La voz del teléfono (speechSynthesis), tal como quedó en
+   r84b con la voz fija de mujer: hoy es solo el respaldo del
+   parlante cuando el servicio de voz no responde. */
+function epubWsSpeakTelefono(word, lang) {
+  if (!word || !("speechSynthesis" in window)) return;
   const u = new SpeechSynthesisUtterance(word);
   u.lang = EPUB_TTS_LANG[lang] || lang || "es-ES";
   if (lang) {
