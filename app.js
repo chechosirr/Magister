@@ -8409,6 +8409,7 @@ let epubWsSeq = 0;
 
 function epubOpenWordSheet() {
   if (!epubSel) return;
+  epubTtsWarm();
   epubCloseOverlays("epub-wordsheet");
   const sh = document.getElementById("epub-wordsheet");
   if (!sh) return;
@@ -8871,8 +8872,62 @@ function epubWsSpeak() {
     if (v) u.voice = v;
   }
   u.rate = 0.92;
+  const voz = epubTtsVoiceFor(lang);
+  if (voz) {
+    try { u.voice = voz; } catch { /* motor quisquilloso: lee con la voz del idioma */ }
+    /* Con voz italiana para el latín, el idioma del aviso
+       pasa a ser el de la voz para que el motor la use. */
+    if (lang === "la" && (voz.lang || "").toLowerCase().replace("_", "-").startsWith("it")) u.lang = voz.lang;
+  }
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(u);
+}
+
+/* r84b (pedido de Sergio): la voz queda FIJA DE MUJER. A
+   veces salía de hombre y a veces de mujer porque el motor
+   elegía solo; ahora manda esta elección: primero la voz
+   femenina preferida del idioma, luego cualquier voz
+   femenina del idioma. Las voces tardan en cargar: se
+   calienta la lista al abrir la hoja y al leer. */
+let epubTtsVoces = null;
+function epubTtsWarm() {
+  if (!("speechSynthesis" in window)) return;
+  const load = () => {
+    const v = window.speechSynthesis.getVoices();
+    if (v && v.length) epubTtsVoces = v;
+  };
+  load();
+  if (!epubTtsVoces && !epubTtsWarm.__h) {
+    epubTtsWarm.__h = true;
+    try { window.speechSynthesis.addEventListener("voiceschanged", load); } catch { /* motor sin evento */ }
+  }
+}
+const EPUB_TTS_FEM_PREF = {
+  es: ["mónica", "monica", "paulina"],
+  en: ["samantha", "kate", "serena"],
+  fr: ["audrey", "amélie", "amelie"],
+  de: ["anna", "katja"],
+  it: ["alice"],
+  pt: ["luciana", "joana"],
+  ca: ["montserrat"],
+  la: ["alice"],
+};
+const EPUB_TTS_FEM = ["samantha", "mónica", "monica", "paulina", "alice", "audrey", "amélie", "amelie", "anna", "katja", "kate", "serena", "luciana", "joana", "montserrat", "carmen", "lucía", "lucia", "laura", "paola", "valentina", "camila", "sofía", "sofia", "fernanda", "maría", "maria", "elena", "helena", "sabina", "zira", "aria", "jenny", "neerja", "heera"];
+function epubTtsVoiceFor(lang) {
+  epubTtsWarm();
+  const vs = epubTtsVoces || [];
+  if (!vs.length) return null;
+  const nom = (v) => (v.name || "").toLowerCase();
+  for (const n of (EPUB_TTS_FEM_PREF[lang] || [])) {
+    const v = vs.find((x) => nom(x).includes(n));
+    if (v) return v;
+  }
+  const base = lang === "la" ? "it" : lang;
+  const delIdioma = vs.filter((v) => (v.lang || "").toLowerCase().replace("_", "-").startsWith(base));
+  const fem = delIdioma.find((v) => EPUB_TTS_FEM.some((n) => nom(v).includes(n)));
+  if (fem) return fem;
+  const cualquieraFem = vs.find((v) => EPUB_TTS_FEM.some((n) => nom(v).includes(n)));
+  return cualquieraFem || delIdioma[0] || null;
 }
 
 async function epubWsTranslate() {
