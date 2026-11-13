@@ -5269,6 +5269,11 @@ async function epubR2Ensure() {
 async function epubR2Show(href, toLast) {
   const r2 = epubR2;
   if (!r2) return false;
+  /* r93: toda foto nace al tamaño VIGENTE, se reafirma aquí
+     mismo antes de mostrar la sección — así ningún retrato
+     puede salir al tamaño que R2 trajera de antes aunque el
+     cambio de letra no haya pasado por epubFontStep. */
+  try { r2.themes.fontSize(epubFontPct + "%"); } catch { /* sin temas aún */ }
   const job = (async () => {
     await r2.display(href);
     if (toLast) {
@@ -7882,6 +7887,19 @@ function epubScrubAttach() {
 function epubFontStep(delta) {
   epubFontPct = Math.min(170, Math.max(80, epubFontPct + delta));
   if (epubRendition) epubRendition.themes.fontSize(epubFontPct + "%");
+  /* r93 (Sergio: «cuando cambio el tamaño de la letra y voy
+     avanzando al siguiente capítulo, cuando llego ahí se
+     agranda de pronto y después se acomoda»): la rendition
+     fotográfica R2 recibía el tamaño SOLO al crearse, y las
+     fotos del capítulo entrante — lo primero que se ve al
+     cruzar — salían para siempre al tamaño de aquel momento
+     (medido: viva a 12,8 px con el 80 % elegido y la foto del
+     capítulo siguiente a 17,6 px con la regla «font-size:
+     110 %» serializada en el clon). El tamaño nuevo se aplica
+     también a R2 en este mismo paso, como el tema en la r64 a
+     todas sus superficies; la reconstrucción del pool que se
+     programa abajo ya retrata con el tamaño vigente. */
+  if (epubR2) { try { epubR2.themes.fontSize(epubFontPct + "%"); } catch { /* R2 sin temas aún */ } }
   epubSaveSettings();
   epubPoke();
   epubCurlPoolSchedule();
