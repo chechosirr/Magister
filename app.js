@@ -6479,6 +6479,16 @@ async function epubLocationsPreparar(book, gid, numBytes) {
       if (book.locations.total > 0) return;
     }
   } catch { /* caché ilegible: se genera de cero */ }
+  /* r92: epub.js impone al generar una pausa de 100 ms POR
+     SECCIÓN (Locations.pause, su valor por defecto): en un
+     libro de miles de secciones (la Biblia en latín: 3.994)
+     eso pone un suelo de ~7 minutos de espera pura antes de
+     que exista la primera localización — medido en el rig:
+     a los 5 minutos la cola aún iba por la sección ~2.600.
+     La cola ya cede el paso entre secciones (setTimeout y
+     rAF), así que la pausa se baja a 0 y generar pasa a
+     tardar lo que tarda leer el libro, no más. */
+  try { book.locations.pause = 0; } catch { /* pausa no ajustable en esta versión */ }
   await book.locations.generate(EPUB_LOC_PASO);
   try { window.localStorage.setItem(clave, book.locations.save()); } catch { /* sin sitio: la próxima apertura regenera */ }
 }
@@ -6819,6 +6829,9 @@ async function epubOpenBook(seq, minimal) {
      a la barra (solo en la apertura completa: el modo mínimo es
      el rescate desnudo de siempre). */
   try { epubScrubAttach(); } catch { /* la barra sigue siendo informativa */ }
+  /* r92: en libros gigantes, la estimación gruesa de la barra
+     se refresca mientras las localizaciones se generan. */
+  try { epubGruesoRefrescoIniciar(); } catch { /* la barra se repinta al pasar de página, como antes */ }
   if (!minimal) { try { epubReturnRestore(); } catch { /* sin punto de vuelta en esta apertura */ } }
   epubZoomGuard();
   epubAttachSheet();
@@ -6841,6 +6854,8 @@ function destroyEpubReader() {
   epubInitSeq++;
   epubDictSeq++;
   epubOpen = false;
+  epubGruesoRefrescoParar();
+  epubGrueso = null;
   epubBlancoIntentos.clear();
   if (epubBlancoTimer) { clearTimeout(epubBlancoTimer); epubBlancoTimer = null; }
   epubViewportUnlock();
@@ -6992,6 +7007,241 @@ function epubAvanceAnotarActual() {
   } catch { /* el avance es informativo; nunca rompe la lectura */ }
 }
 
+/* r92 — POSICIÓN GRUESA por secciones, para libros gigantes.
+   El % fino y el arrastre de la barra cuelgan de las
+   localizaciones de epub.js, y en un libro de miles de
+   secciones (la Biblia en latín: 3.994 secciones, 36 MB de
+   XHTML) generarlas lleva minutos: mientras tanto la barra
+   quedaba en 0 y el dedo no podía agarrarla («no se mueve ni
+   me deja», Sergio, 2026-11-12). Mientras las localizaciones
+   no están, la barra trabaja con una estimación gruesa PERO
+   funcional: cada sección del spine pesa lo que pesa su
+   XHTML dentro del EPUB (directorio del zip, sin cargar
+   ninguna) y la fracción dentro de la sección sale de la
+   página mostrada (displayed.page/total). Se mueve al leer
+   igual que la fina, y el arrastre salta a la sección y la
+   página que tocan por la fracción. Cuando las
+   localizaciones llegan, el % fino — que pondera casi lo
+   mismo — toma el relevo sin salto brusco (la cadena de
+   apertura ya repinta la barra al terminar de generar).
+   En libros normales las localizaciones llegan enseguida y
+   esta vía ni se usa. */
+let epubGrueso = null; /* { book, cum, n } — se rehace por ejemplar */
+function epubLocListas() {
+  return !!(epubBook && epubBook.locations && (epubBook.locations.total || 0) > 0);
+}
+function epubGruesoTabla() {
+  if (!epubBook || !epubBook.spine) return null;
+  if (epubGrueso && epubGrueso.book === epubBook) return epubGrueso;
+  const items = epubBook.spine.spineItems || [];
+  const n = items.length;
+  if (!n) { epubGrueso = null; return null; }
+  const pesos = new Float64Array(n).fill(1);
+  try {
+    const zip = epubBook.archive && epubBook.archive.zip;
+    const files = zip && zip.files;
+    if (files) {
+      /* Rutas completas y cada sufijo tras una «/»: el href
+         del spine viene relativo a la carpeta del OPF y así
+         casa con algún sufijo de la ruta del zip. */
+      const porRuta = Object.create(null);
+      for (const clave of Object.keys(files)) {
+        const f = files[clave];
+        const tam = (f && f._data && typeof f._data.uncompressedSize === "number") ? f._data.uncompressedSize : 0;
+        if (!(tam > 0)) continue;
+        porRuta[clave] = tam;
+        let corte = clave.indexOf("/");
+        while (corte >= 0) {
+          const suf = clave.slice(corte + 1);
+          if (!(suf in porRuta)) porRuta[suf] = tam;
+          corte = clave.indexOf("/", corte + 1);
+        }
+      }
+      let ok = 0;
+      for (let i = 0; i < n; i++) {
+        const href = items[i].href || "";
+        let tam = porRuta[href];
+        if (tam == null) { try { tam = porRuta[decodeURIComponent(href)]; } catch { /* el href tal cual */ } }
+        if (typeof tam === "number" && tam > 0) { pesos[i] = tam; ok++; }
+      }
+      /* Si el directorio no cubre casi todo el spine, los
+         pesos serían un mapa a medias: mejor a partes iguales
+         (las secciones de estos libros son capítulos y se
+         parecen) que una ponderación torcida. */
+      if (ok < Math.floor(n * 0.8)) pesos.fill(1);
+    }
+  } catch { pesos.fill(1); }
+  const cum = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) cum[i + 1] = cum[i] + pesos[i];
+  const total = cum[n] || n;
+  const crudos = cum.slice(); /* acumulado en bytes, sin normalizar */
+  for (let i = 0; i <= n; i++) cum[i] = cum[i] / total;
+  epubGrueso = { book: epubBook, cum, crudos, totalBytes: total, n };
+  return epubGrueso;
+}
+/* La frontera de la generación en curso: cuántas secciones
+   lleva procesadas epub.js y cuántas localizaciones parió.
+   Con eso, la posición que ya cayó dentro del prefijo
+   generado se mide con su índice de localización REAL (casi
+   el % fino) en vez de con bytes: cuando la generación
+   termina, el relevo al % fino no da ningún salto. Fuera del
+   prefijo manda la fracción por bytes (la densidad del texto
+   aún no se conoce ahí y es lo mejor que hay sin cargar). */
+function epubGruesoFrontera() {
+  try {
+    const L = epubBook && epubBook.locations;
+    if (!L || epubLocListas()) return null;
+    const locs = (L._locations && L._locations.length) || 0;
+    if (!locs) return null;
+    const t = epubGruesoTabla();
+    if (!t) return null;
+    let q = 0;
+    try { q = (L.q && typeof L.q.length === "function") ? L.q.length() : 0; } catch { q = 0; }
+    const procesadas = Math.min(t.n, Math.max(0, t.n - q));
+    if (procesadas <= 0 || !(t.crudos[procesadas] > 0)) return null;
+    const totalEst = (locs * EPUB_LOC_PASO) * (t.totalBytes / t.crudos[procesadas]);
+    if (!isFinite(totalEst) || !(totalEst > 0)) return null;
+    return { procesadas, locs, totalEst };
+  } catch { return null; }
+}
+/* Índice de la última localización generada que no pasa del
+   CFI dado, buscado a mano sobre las localizaciones parciales.
+   NO sirve el locationFromCfi de epub.js durante la
+   generación: recorta el resultado a locations.total, que a
+   mitad de generación aún vale 0 — devolvía 0 para todo y la
+   barra se clavaba en 0 % en cuanto la frontera pasaba de la
+   posición. La comparación es la del propio epub.js. */
+function epubGruesoIndiceLoc(cfi) {
+  try {
+    const L = epubBook && epubBook.locations;
+    const arr = L && L._locations;
+    const cmp = L && L.epubcfi && L.epubcfi.compare;
+    if (!arr || !arr.length || typeof cmp !== "function") return -1;
+    let lo = 0, hi = arr.length - 1, ans = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const c = cmp.call(L.epubcfi, cfi, arr[mid]);
+      if (c === 0) return mid;
+      if (c > 0) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    return ans;
+  } catch { return -1; }
+}
+
+/* Fracción gruesa [0,1] de una posición de rendition. */
+function epubGruesoDeLoc(loc) {
+  try {
+    const t = epubGruesoTabla();
+    if (!t || !loc || !loc.start) return -1;
+    let idx = (typeof loc.start.index === "number") ? loc.start.index : -1;
+    if (idx < 0 && epubBook.spine && typeof epubBook.spine.get === "function") {
+      const s = loc.start.cfi ? epubBook.spine.get(loc.start.cfi)
+        : (loc.start.href ? epubBook.spine.get(loc.start.href) : null);
+      if (s && typeof s.index === "number") idx = s.index;
+    }
+    if (idx < 0 || idx >= t.n) return -1;
+    const d = loc.start.displayed;
+    let intra = 0;
+    if (d && typeof d.total === "number" && d.total > 0 && typeof d.page === "number") {
+      intra = Math.min(1, Math.max(0, (d.page - 1 + 0.5) / d.total));
+    }
+    /* Dentro del prefijo ya generado: índice real de la posición. */
+    const fr = epubGruesoFrontera();
+    if (fr && idx < fr.procesadas && loc.start.cfi) {
+      try {
+        const li = epubGruesoIndiceLoc(loc.start.cfi);
+        if (typeof li === "number" && li >= 0) {
+          return Math.min(1, Math.max(0, ((li + 0.5) * EPUB_LOC_PASO) / fr.totalEst));
+        }
+      } catch { /* se queda la estimación por bytes */ }
+    }
+    return t.cum[idx] + (t.cum[idx + 1] - t.cum[idx]) * intra;
+  } catch { return -1; }
+}
+/* Fracción gruesa de un CFI suelto: el arranque de su sección. */
+function epubGruesoDeCfi(cfi) {
+  try {
+    const t = epubGruesoTabla();
+    if (!t || !cfi || !epubBook.spine || typeof epubBook.spine.get !== "function") return -1;
+    const s = epubBook.spine.get(cfi);
+    if (!s || typeof s.index !== "number" || s.index < 0 || s.index >= t.n) return -1;
+    return t.cum[s.index];
+  } catch { return -1; }
+}
+/* La sección y la fracción interna que tocan por una fracción global. */
+function epubGruesoDestino(frac) {
+  const t = epubGruesoTabla();
+  if (!t) return null;
+  const f = Math.min(1, Math.max(0, frac));
+  /* Si el destino cae dentro del prefijo ya generado, se
+     resuelve con las localizaciones parciales mismas: la
+     sección de la localización que toca por el conteo. */
+  const fr = epubGruesoFrontera();
+  if (fr) {
+    try {
+      const objetivo = f * fr.totalEst;
+      if (objetivo < fr.locs * EPUB_LOC_PASO) {
+        const li = Math.min(fr.locs - 1, Math.max(0, Math.floor(objetivo / EPUB_LOC_PASO)));
+        const cfiL = epubBook.locations._locations[li];
+        const s = (cfiL && epubBook.spine && typeof epubBook.spine.get === "function") ? epubBook.spine.get(cfiL) : null;
+        if (s && typeof s.index === "number") return { index: s.index, intra: 0 };
+      }
+    } catch { /* destino por bytes */ }
+  }
+  let lo = 0, hi = t.n - 1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (t.cum[mid + 1] < f) lo = mid + 1; else hi = mid; }
+  const ancho = t.cum[lo + 1] - t.cum[lo];
+  const intra = ancho > 0 ? Math.min(1, Math.max(0, (f - t.cum[lo]) / ancho)) : 0;
+  return { index: lo, intra };
+}
+/* Mientras la generación corre, la estimación de la posición
+   quieta mejora sola cuando la frontera la alcanza (pasa a
+   medirse con localizaciones reales), pero la barra solo se
+   repinta al pasar de página: sin refresco, el % se quedaba
+   con la primera estimación por bytes y al aterrizar las
+   localizaciones el salto al % fino se veía de golpe. Este
+   refresco repinta la barra cada pocos segundos mientras
+   falten las localizaciones, y la estimación se va acercando
+   al valor fino en pasos pequeños: el relevo no salta. */
+let epubGruesoTimer = null;
+function epubGruesoRefrescoIniciar() {
+  epubGruesoRefrescoParar();
+  epubGruesoTimer = setInterval(() => {
+    try {
+      if (!epubOpen || !epubBook || epubLocListas()) { epubGruesoRefrescoParar(); return; }
+      if (epubScrub) return; /* durante el arrastre pinta el arrastre */
+      epubUpdateProgress();
+    } catch { /* el refresco nunca rompe la lectura */ }
+  }, 4000);
+}
+function epubGruesoRefrescoParar() {
+  if (epubGruesoTimer) { clearInterval(epubGruesoTimer); epubGruesoTimer = null; }
+}
+
+/* Salto grueso: muestra la sección que toca y, si `fino`, camina
+   dentro de ella hasta la página que toca por la fracción
+   interna (en estos libros las secciones son capítulos cortos:
+   el error residual es de una página como mucho). */
+async function epubGruesoMostrar(frac, fino) {
+  const d = epubGruesoDestino(frac);
+  if (!d || !epubBook || !epubBook.spine) return;
+  const sec = epubBook.spine.get(d.index);
+  if (!sec || !sec.href) return;
+  await epubDisplayBounded(sec.href, EPUB_SCRUB_DISPLAY_MS);
+  if (!fino) return;
+  try {
+    const loc = epubRendition.currentLocation();
+    if (!loc || !loc.start || loc.start.index !== d.index) return;
+    const disp = loc.start.displayed;
+    if (!disp || !(disp.total > 1)) return;
+    const destino = Math.round(d.intra * (disp.total - 1));
+    let pasos = destino - ((disp.page || 1) - 1);
+    let guarda = 0;
+    while (pasos > 0 && guarda++ < 80) { await epubRendition.next(); pasos--; }
+    while (pasos < 0 && guarda++ < 80) { await epubRendition.prev(); pasos++; }
+  } catch { /* la sección sola ya es el destino aproximado */ }
+}
+
 /* r75 (pedido de Sergio): asa con flechas sobre la barra, en el
    extremo del relleno, para agarrar el arrastre a la vista. Es
    solo visual (pointer-events:none): el gesto sigue siendo el
@@ -7022,10 +7272,25 @@ function epubUpdateProgress() {
     try { cfi = window.localStorage.getItem(epubPosKey()); } catch { cfi = null; }
     if (cfi && !epubIsCfi(cfi)) { epubStoreRemove(epubPosKey()); cfi = null; }
     let pct = -1;
-    if (cfi && epubBook.locations && typeof epubBook.locations.percentageFromCfi === "function") {
+    /* r92: la vía fina solo vale con las localizaciones
+       COMPLETAS: a mitad de generación percentageFromCfi
+       devuelve 0 (su total aún es 0), y ese 0 falso dejaba la
+       barra clavada en 0 % aunque la posición gruesa ya se
+       conocía. */
+    if (cfi && epubLocListas() && typeof epubBook.locations.percentageFromCfi === "function") {
       let p = NaN;
       try { p = epubBook.locations.percentageFromCfi(cfi); } catch { p = NaN; }
       if (typeof p === "number" && isFinite(p) && p >= 0) pct = Math.round(p * 100);
+    }
+    /* r92: sin localizaciones (libro gigante aún generándolas),
+       la barra no se queda en blanco: pinta la estimación
+       gruesa por secciones, que se mueve al leer igual. */
+    if (pct < 0 && !epubLocListas()) {
+      try {
+        const locA = (epubRendition && typeof epubRendition.currentLocation === "function") ? epubRendition.currentLocation() : null;
+        const g = epubGruesoDeLoc(locA);
+        if (g >= 0) pct = Math.round(g * 100);
+      } catch { /* ni gruesa: queda el último % conocido */ }
     }
     if (pct >= 0) {
       epubLastPct = pct;
@@ -7328,6 +7593,14 @@ function epubScrubLocReady() {
   return !!(epubOpen && epubBook && epubRendition && epubBook.locations && (epubBook.locations.total || 0) > 0);
 }
 
+/* r92: el arrastre puede nacer también sin localizaciones, en
+   modo grueso, si hay spine con el que estimar (libros
+   gigantes aún generándolas): la barra deja de estar muerta. */
+function epubScrubReady() {
+  if (epubScrubLocReady()) return true;
+  return !!(epubOpen && epubBook && epubRendition && epubBook.spine && epubBook.spine.length > 0);
+}
+
 function epubScrubFrac(clientX) {
   const track = document.getElementById("epub-prog-track");
   if (!track) return 0;
@@ -7379,7 +7652,24 @@ function epubScrubDrain() {
         S.pending = null;
         S.shown = f;
         S.lastDisplayAt = Date.now();
-        try { await epubDisplayBounded(epubBook.locations.cfiFromPercentage(f), EPUB_SCRUB_DISPLAY_MS); }
+        try {
+          if (epubLocListas()) {
+            await epubDisplayBounded(epubBook.locations.cfiFromPercentage(f), EPUB_SCRUB_DISPLAY_MS);
+          } else if (S.ending) {
+            /* r92 (modo grueso): el salto final va a la sección
+               y a la página interna que tocan por la fracción. */
+            await epubGruesoMostrar(f, true);
+          } else {
+            /* r92 (modo grueso, en vivo): basta con cambiar de
+               sección cuando la fracción cae en otra; repetir la
+               misma sección solo repagina y parpadea. */
+            const d = epubGruesoDestino(f);
+            const locA = (epubRendition && typeof epubRendition.currentLocation === "function") ? epubRendition.currentLocation() : null;
+            if (d && (!locA || !locA.start || locA.start.index !== d.index)) {
+              await epubGruesoMostrar(f, false);
+            }
+          }
+        }
         catch { /* un salto fallido o colgado no tumba el arrastre: manda el siguiente */ }
       }
     } finally { S.draining = false; }
@@ -7434,17 +7724,23 @@ function epubScrubBegin(id, origin, clientX) {
 }
 
 function epubScrubDown(e) {
-  if (!epubScrubLocReady()) return;
+  if (!epubScrubReady()) return;
   if (epubScrub || epubScrubPending) return;
   let cfi = null, pct = 0;
+  /* r92: el % de origen sale de las localizaciones si ya están,
+     y si no, de la estimación gruesa de la misma posición. */
+  const fino = epubLocListas();
   try {
     const loc = epubRendition.currentLocation();
-    if (loc && loc.start && loc.start.cfi) { cfi = loc.start.cfi; pct = epubBook.locations.percentageFromCfi(cfi) || 0; }
+    if (loc && loc.start && loc.start.cfi) {
+      cfi = loc.start.cfi;
+      pct = fino ? (epubBook.locations.percentageFromCfi(cfi) || 0) : Math.max(0, epubGruesoDeLoc(loc));
+    }
   } catch { /* se intenta con la posición guardada */ }
   if (!cfi) {
     try {
       cfi = window.localStorage.getItem(epubPosKey());
-      if (cfi) pct = epubBook.locations.percentageFromCfi(cfi) || 0;
+      if (cfi) pct = fino ? (epubBook.locations.percentageFromCfi(cfi) || 0) : Math.max(0, epubGruesoDeCfi(cfi));
     } catch { cfi = null; }
   }
   if (!cfi || !epubIsCfi(cfi)) return;
