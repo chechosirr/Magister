@@ -10217,7 +10217,7 @@ async function epubDictLocal(term) {
     for (const d of j.definiciones || []) {
       if (d && d.texto) out.push({ pos: d.pos || "", text: d.texto });
     }
-    if (j.forma && j.forma.lema) out.formaDe = { forma: j.forma.palabra || term, lema: j.forma.lema };
+    if (j.forma && j.forma.lema) out.formaDe = { forma: j.forma.palabra || term, lema: j.forma.lema, conjugacion: j.forma.conjugacion || "" };
     /* Partes principales del latín (solo las trae el
        diccionario latín-español): la hoja las pinta arriba del
        cuadro de Significado. */
@@ -10272,11 +10272,16 @@ function epubDefsHtmlFull(defs) {
 
 /* Cabecera cuando la palabra tocada era una forma y las
    definiciones son las del lema (formas=lema): «sufrirían» —
-   forma de «sufrir». */
+   forma de «sufrir». r100: si el servicio trae la
+   identificación gramatical de la forma (la tabla de
+   conjugaciones del latín), va en la misma línea discreta,
+   tras el lema: «amāvērunt» — forma de «amo» · perfecto de
+   indicativo, 3ª persona del plural, voz activa. Sin ese
+   dato, la línea queda como siempre. */
 function epubFormaHeadHtml(defs) {
-  return defs && defs.formaDe
-    ? `<p class="epub-dict-var">«${esc(defs.formaDe.forma)}» — ${T("forma de")} «${esc(defs.formaDe.lema)}»</p>`
-    : "";
+  if (!defs || !defs.formaDe) return "";
+  const f = defs.formaDe;
+  return `<p class="epub-dict-var">«${esc(f.forma)}» — ${T("forma de")} «${esc(f.lema)}»${f.conjugacion ? ` · ${esc(f.conjugacion)}` : ""}</p>`;
 }
 
 /* Ficha de formas del latín (r66p13): solo la trae el
