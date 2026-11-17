@@ -3762,7 +3762,20 @@ function epubThemeCssText(t) {
        cae sobre los bloques de texto y sobre los títulos
        (reglas de abajo). */
     "p, div, li, blockquote, pre, td, th, dt, dd, figcaption, section, article { font-family: " + EPUB_FONT_STACK + " !important; }" +
-    "h1, h2, h3 { color: " + t.head + " !important; }" +
+    /* Títulos en rojo y subtítulos según el tema (r91,
+       norma de Sergio 2026-11-12): el TÍTULO (h1 y las
+       clases de título de capítulo/sección) va en rojo en
+       los tres temas — el rojo de la casa, el mismo de los
+       títulos del índice de aquí abajo: #ff4d4d en el tema
+       oscuro y #c62828 en los claros, para que se lea — y
+       el SUBTÍTULO (h2 y su clase) va en blanco SOLO en el
+       tema oscuro: en claro y menta lleva el color normal
+       del texto. Eso es justo t.ink (blanco en el oscuro;
+       la tinta del cuerpo en los demás). El h3 conserva el
+       color de encabezado de siempre (t.head). */
+    "h1, .cap, .titulo { color: " + (t.ink === "#ffffff" ? "#ff4d4d" : "#c62828") + " !important; }" +
+    "h2, .subtitulo { color: " + t.ink + " !important; }" +
+    "h3 { color: " + t.head + " !important; }" +
     /* Títulos y subtítulos TAMBIÉN en Bookerly (pedido de
        Sergio, 2026-11-11 noche): con regla propia y
        !important, la CSS de un libro no puede sacarlos de la
@@ -4719,13 +4732,19 @@ function epubSheetEnd(x, y) {
     /* Prioridad (r19): un toque sobre una marca de NOTA abre la
        vista de la nota; tocar fuera de marcas alterna controles
        como siempre. */
-    const noteHit = epubNoteHitAt(x, y);
+    /* r95: un toque sobre la LLAMADA hipervinculada de una
+       nota del libro (o sobre la vuelta dentro de la nota)
+       sigue su enlace, por encima de todo lo demás que haya
+       bajo el dedo: es un blanco diminuto y deliberado. */
+    const linkHit = epubNotaLinkHitAt(x, y);
+    const noteHit = linkHit ? null : epubNoteHitAt(x, y);
     /* Una foto o imagen bajo el dedo se abre a pantalla
        completa en el visor (pedido de Sergio, 2026-11-11),
        antes que el menú de marcas y que alternar los
        controles; las marcas de nota conservan su prioridad. */
-    const imgHit = noteHit ? null : epubImageHitAt(x, y);
-    if (imgHit) epubImgViewOpen(imgHit.currentSrc || imgHit.src || "");
+    const imgHit = (linkHit || noteHit) ? null : epubImageHitAt(x, y);
+    if (linkHit) epubNotaLinkSeguir(linkHit);
+    else if (imgHit) epubImgViewOpen(imgHit.currentSrc || imgHit.src || "");
     else if (noteHit) epubOpenNoteView(noteHit);
     else {
       /* Un toque sobre un pasaje RESALTADO o SUBRAYADO abre el
@@ -4902,6 +4921,19 @@ function epubAttachGestures(contents) {
       const complete = adv >= EPUB_TURN_DX || (adv >= 30 && adv / dur >= 0.5);
       epubFoldSettle(g.dir, complete);
     } else if (Math.abs(dx) < 12 && Math.abs(dy) < 12 && dur < 500) {
+      /* r95: si el toque cayó sobre la llamada de una nota (o
+         su vuelta) y el documento recibió el gesto, manda el
+         enlace, no alternar controles. */
+      let aHit = null;
+      try {
+        const t0 = e.target;
+        if (t0 && t0.closest) aHit = t0.closest("a.llamada, a.vuelta");
+        if (!aHit && ct) {
+          const elP = doc.elementFromPoint ? doc.elementFromPoint(ct.clientX, ct.clientY) : null;
+          if (elP && elP.closest) aHit = elP.closest("a.llamada, a.vuelta");
+        }
+      } catch { aHit = null; }
+      if (aHit) { epubNotaLinkSeguir(aHit); return; }
       let sel = "";
       try { sel = g.contents.window.getSelection().toString(); } catch { sel = ""; }
       if (!sel.trim()) epubTapToggle();
@@ -4916,9 +4948,14 @@ function epubAttachGestures(contents) {
   doc.addEventListener("click", (e) => {
     if (!epubOpen) return;
     if (Date.now() - epubTouchEndAt < 500) return;
+    /* r95: click directo sobre la llamada de una nota (o su
+       vuelta), con la lámina retirada o con ratón: sigue el
+       enlace en vez de alternar controles. */
+    const tgt = e && e.target;
+    const tgtA = tgt && tgt.closest ? tgt.closest("a.llamada, a.vuelta") : null;
+    if (tgtA) { e.preventDefault(); epubNotaLinkSeguir(tgtA); return; }
     /* Click directo sobre una imagen (ratón, o con la
        lámina retirada): también abre el visor. */
-    const tgt = e && e.target;
     if (tgt && tgt.tagName === "IMG") {
       const r = tgt.getBoundingClientRect();
       if (r.width >= 40 && r.height >= 40) {
@@ -6792,6 +6829,7 @@ async function epubOpenBook(seq, minimal) {
        se alcanzaba en ese caso. */
     if (!startAt) throw dispErr;
     epubStoreRemove(epubPosKey());
+    startAt = undefined; /* r94: posición descartada; la confirmación de abajo no la reintenta */
     await epubDisplayBounded(undefined);
   }
   if (seq !== epubInitSeq) throw new Error("apertura cancelada");
@@ -6808,6 +6846,37 @@ async function epubOpenBook(seq, minimal) {
      normal (precarga de la ficha o caché del aparato) tarda
      un instante. */
   await epubEsperarPaginaPintada();
+  /* r94 (bug de Sergio, 2026-11-14: «no se está guardando la
+     página en la que estaba; al volver a abrir me tira a la que
+     estaba cuando abrí la primera vez»): el guardado SÍ funciona
+     — cada «relocated» escribe la posición y al salir se vuelve
+     a escribir —; lo que falla es la RESTAURACIÓN en frío.
+     Medido en el rig (libro 900000005): la apertura pide el CFI
+     guardado exacto, pero epub.js, al cargar la sección de cero
+     con el gancho de contenido mutando el documento (la letra
+     Bookerly y el silabeo propio cambian la maqueta tras su
+     medición), resuelve el salto a la PRIMERA página de la
+     sección, y ese arranque equivocado se guarda encima de la
+     posición buena en el mismo «relocated». Con la sección ya
+     cargada, el mismo display() al mismo CFI cae exacto
+     (verificado), y sin mutación del gancho el salto en frío
+     cae en la página correcta. Arreglo: con la página ya
+     pintada — aún tras la cortina de «Abriendo el libro…» — se
+     CONFIRMA la restauración: si la posición viva no es la
+     pedida, se repite el salto UNA vez, ya con la maqueta
+     asentada, y su «relocated» deja guardada la posición
+     buena. Si entre sesiones cambió el tamaño de letra, la
+     página que contiene la posición puede empezar en otro CFI:
+     el re-salto cae en esa página, que es lo correcto. El
+     destino de presentación (un href, no un CFI) no se
+     confirma: caer al principio de su sección es lo suyo. */
+  if (!minimal && startAt && epubIsCfi(startAt)) {
+    try {
+      const l = epubRendition && epubRendition.currentLocation();
+      const cfiAhora = l && l.start ? l.start.cfi : null;
+      if (cfiAhora && cfiAhora !== startAt) await epubDisplayBounded(startAt);
+    } catch { /* la posición ya tuvo su intento en la apertura */ }
+  }
   /* Apertura progresiva (pedido de Sergio, 2026-11-11,
      que sustituye a la espera de la r79b): en los libros
      grandes la generación de localizaciones dejaba el
@@ -6850,10 +6919,12 @@ async function epubOpenBook(seq, minimal) {
 
 function destroyEpubReader() {
   /* La posición queda guardada POR LIBRO también al salir (la de
-     cada página ya la guarda «relocated» al pasar). */
+     cada página ya la guarda «relocated» al pasar). r95: si se
+     sale estando de visita en las notas, no se guarda: la
+     posición de reanudar es la del texto, no la de la nota. */
   try {
     const l = epubRendition && epubRendition.location;
-    if (l && l.start && l.start.cfi) window.localStorage.setItem(epubPosKey(), l.start.cfi);
+    if (l && l.start && l.start.cfi && !epubEsDocNotas(l.start.href)) window.localStorage.setItem(epubPosKey(), l.start.cfi);
   } catch { /* sin almacenamiento */ }
   epubBytes = null;
   epubInitSeq++;
@@ -6896,12 +6967,26 @@ function destroyEpubReader() {
 }
 
 function epubOnRelocated(loc) {
+  /* r95: la visita a una nota NO es posición de lectura: si
+     la ubicación viva está en los documentos de notas, no se
+     guarda posición (la de reanudar sigue siendo la del
+     texto) ni se anota avance con ella. Al aterrizar de
+     vuelta en el texto desde la vuelta de una nota, el
+     punto de vuelta plantado al saltar se retira: ya se
+     está en el origen. */
+  const enNotas = !!(loc && loc.start && epubEsDocNotas(loc.start.href));
   try {
-    if (loc && loc.start && loc.start.cfi) {
+    if (!enNotas && loc && loc.start && loc.start.cfi) {
       window.localStorage.setItem(epubPosKey(), loc.start.cfi);
     }
   } catch { /* sin almacenamiento */ }
-  epubAvanceAnotar(loc);
+  if (!enNotas) {
+    epubAvanceAnotar(loc);
+    if (epubNotaVueltaPendiente) {
+      epubNotaVueltaPendiente = false;
+      epubReturnClear();
+    }
+  }
   epubUpdateProgress();
   epubCurlPoolSchedule();
   if (!epubScrub) epubVigilarBlanco();
@@ -7350,6 +7435,102 @@ function epubUpdateProgress() {
 let epubScrub = null;
 let epubScrubPending = null;
 let epubReturn = null;
+
+/* r95 (Sergio, 2026-11-14): salto a una NOTA del libro por su
+   llamada hipervinculada (§63 del conversor OCR / regla 87 del
+   normal). Al tocar la llamada, el punto de vuelta de la barra
+   (epubReturn, el mismo del arrastre) se planta en el punto
+   EXACTO donde se tocó — el numerito donde se dio clic — y un
+   toque sobre el marcador devuelve ahí. La visita a la nota
+   NO es posición de lectura: mientras la ubicación viva esté
+   en los documentos de notas, ni «relocated» ni el cierre
+   guardan posición (la de reanudar sigue siendo la del
+   texto). La vuelta también sale del enlace «vuelta» de la
+   propia nota, y al aterrizar de vuelta en el texto el
+   marcador se retira. */
+let epubNotaVueltaPendiente = false;
+
+function epubEsDocNotas(href) {
+  if (!href) return false;
+  const base = String(href).split("#")[0].split("/").pop();
+  return base === "notas.xhtml" || base === "notas-cuerpo.xhtml";
+}
+
+/* Enlace de nota bajo un punto de la página (coordenadas del
+   documento padre): el mismo barrido de marcos que la imagen
+   y la palabra. El superíndice de la llamada es diminuto: se
+   admite el toque con unos píxeles de holgura alrededor de
+   su caja, y manda el enlace de caja más pequeña. */
+function epubNotaLinkHitAt(clientX, clientY) {
+  if (!epubRendition) return null;
+  let all = [];
+  try { all = epubRendition.getContents() || []; } catch { all = []; }
+  for (const contents of all) {
+    const doc = contents && contents.document;
+    const win = doc && doc.defaultView;
+    const frame = win && win.frameElement;
+    if (!doc || !win || !frame) continue;
+    const rect = frame.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) continue;
+    const dx = clientX - rect.left, dy = clientY - rect.top;
+    let mejor = null, mejorArea = Infinity;
+    doc.querySelectorAll("a.llamada, a.vuelta").forEach((a) => {
+      const r = a.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      if (dx < r.left - 7 || dx > r.right + 7 || dy < r.top - 9 || dy > r.bottom + 9) return;
+      const area = r.width * r.height;
+      if (area < mejorArea) { mejorArea = area; mejor = a; }
+    });
+    if (mejor) return mejor;
+    const el = doc.elementFromPoint ? doc.elementFromPoint(dx, dy) : null;
+    const a2 = el && el.closest ? el.closest("a.llamada, a.vuelta") : null;
+    if (a2) return a2;
+  }
+  return null;
+}
+
+function epubNotaLinkSeguir(a) {
+  if (!a || !epubRendition) return;
+  const href = a.getAttribute("href");
+  if (!href) return;
+  if (a.classList.contains("llamada")) {
+    /* El punto de vuelta nace en el origen, con la receta del
+       arrastre: primero la foto que el pool ya tenga de esta
+       página; si no, la foto clásica en diferido. */
+    let cfi = null, pct = 0;
+    const fino = epubLocListas();
+    try {
+      const loc = epubRendition.currentLocation();
+      if (loc && loc.start && loc.start.cfi) {
+        cfi = loc.start.cfi;
+        pct = fino ? (epubBook.locations.percentageFromCfi(cfi) || 0) : Math.max(0, epubGruesoDeLoc(loc));
+      }
+    } catch { /* sin posición viva: no hay punto que plantar */ }
+    if (cfi && epubIsCfi(cfi)) {
+      const originLocKey = (typeof epubPoolLocKey === "function") ? epubPoolLocKey() : null;
+      const marker = { cfi, pct, snap: epubReturnSnapshotFromPool() };
+      epubReturnSet(marker);
+      if (!marker.snap) {
+        setTimeout(() => {
+          if (epubReturn !== marker || marker.snap) return;
+          if (originLocKey) {
+            const live = (typeof epubPoolLocKey === "function") ? epubPoolLocKey() : null;
+            if (live && live !== originLocKey) return;
+          }
+          const snap = epubReturnSnapshot();
+          if (!snap || epubReturn !== marker) return;
+          marker.snap = snap;
+          epubReturnPersist();
+          epubReturnRender();
+        }, 0);
+      }
+    }
+  } else if (a.classList.contains("vuelta")) {
+    epubNotaVueltaPendiente = true;
+  }
+  const p = epubDisplayBounded(href);
+  if (p && p.catch) p.catch(() => {});
+}
 /* r75: frenos del arrastre — un solo display en vuelo (como
    siempre), un intervalo mínimo entre displays en vivo para
    absorber las ráfagas del dedo mandando solo la ÚLTIMA
