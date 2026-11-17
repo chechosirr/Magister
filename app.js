@@ -295,7 +295,12 @@ function catDetailPage() {
       d.busy = false;
       d.pagina = r.pagina; d.paginas = r.paginas;
       d.total = r.total; d.enB2 = r.enB2;
-      const nuevos = (r.books || []).map((a) => catalogBook(a, d.slug, d.slug === "latin" ? "la" : d.idioma));
+      /* El listado de la categoría trae los libros de TODOS
+         los idiomas (regla de Sergio, 2026-11-17: los 20
+         primeros, en español; el resto, en el orden normal);
+         cada fila trae su propio idioma en a[4] y ese es el
+         que se le anota al libro, no el de la cuenta. */
+      const nuevos = (r.books || []).map((a) => catalogBook(a, d.slug, a[4] || (d.slug === "latin" ? "la" : d.idioma)));
       d.books = d.books.concat(nuevos);
       if (view.name === "categories" && view.category === d.nombre) render();
     })
@@ -654,15 +659,12 @@ function categoriesHtml() {
           list = catSelHoy.sel[slug].map((a) => catalogBook(a, slug, slug === "latin" ? "la" : catSelHoy.idioma));
           esSeleccion = true;
         }
-        let total = list.length;
-        if (catManifest && slug && catManifest.categorias[slug]) {
-          const por = catManifest.categorias[slug].porIdioma[lang];
-          if (por) total = por.total;
-        }
+        /* El botón dice solo «Ver todo», sin el número de
+           libros (regla de Sergio, 2026-11-17). */
         return `<section class="cat-block" aria-label="Categoría ${esc(name)}">
           <div class="cat-section-head">
             <h2>${esc(name)}</h2>
-            <button type="button" data-action="select-category" data-cat="${esc(name)}">Ver todo (${total}) ›</button>
+            <button type="button" data-action="select-category" data-cat="${esc(name)}">Ver todo ›</button>
           </div>
           ${list.length === 0
             ? `<p class="small dim mt-2">Aún no hay libros del catálogo en esta categoría.</p>`
@@ -675,7 +677,8 @@ function categoriesHtml() {
      título y el conteo, el filtro propio de la categoría
      (r71, pedido de Sergio: salía en medio de la pantalla);
      debajo, los libros del inicio (sin rótulo) y la lista
-     completa del catálogo en el idioma de la cuenta, por
+     completa del catálogo en todos los idiomas (los 20
+     primeros, en español; regla de Sergio, 2026-11-17), por
      páginas (botón «Cargar más»). */
   catEnsureDetail(active);
   const d = catDetail;
@@ -690,9 +693,7 @@ function categoriesHtml() {
   const lista = enFiltro ? (d.filtroBooks || []) : d.books;
   const hayMas = enFiltro ? d.filtroPagina < d.filtroPaginas : d.pagina < d.paginas;
   const conteo = d.total
-    ? (d.slug === "latin"
-      ? `<p class="small dim mt-1">${d.total} ${d.total === 1 ? "libro" : "libros"} · ${d.enB2} ya en la bodega</p>`
-      : `<p class="small dim mt-1">${d.total} ${d.total === 1 ? "libro" : "libros"} en tu idioma · ${d.enB2} ya en la bodega</p>`)
+    ? `<p class="small dim mt-1">${d.total} ${d.total === 1 ? "libro" : "libros"} · ${d.enB2} ya en la bodega</p>`
     : "";
   return `<div class="view-pad">
     <h1 class="view-title center">Categorías</h1>
@@ -711,7 +712,7 @@ function categoriesHtml() {
         : `<div class="grid-books" style="margin-top:22px">${d.destacados.map((book) => bookCardHtml(book)).join("")}</div>`}
     ${d.error && lista.length === 0 ? `<p class="small mt-4" role="alert">${esc(d.error)}</p>` : ""}
     ${!enFiltro && d.pagina > 0 && d.total === 0
-      ? `<p class="small dim mt-4">Aún no hay libros de esta categoría en tu idioma.</p>`
+      ? `<p class="small dim mt-4">Aún no hay libros de esta categoría.</p>`
       : lista.length === 0
         ? (enFiltro && d.busy ? `<p class="small dim mt-4">Buscando…</p>` : enFiltro ? `<p class="small dim mt-4">Sin resultados para ese filtro.</p>` : `<p class="small dim mt-4">Cargando la lista completa…</p>`)
         : `<h3 class="font-display" style="margin:22px 0 0;font-size:16px;font-weight:700">${enFiltro ? "Resultados del filtro" : "Todos los libros"}</h3>
