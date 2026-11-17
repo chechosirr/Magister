@@ -196,11 +196,24 @@ async function catFetch(path) {
 
 let catManifest = null;
 let catManifestBusy = false;
+/* Miles con punto, formato español («71.621»). */
+function fmtMiles(n) {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+/* La línea del héroe anuncia el total del catálogo: al llegar el
+   manifiesto se repinta el número en su sitio, sin re-render. */
+function pintarTotalHeroe() {
+  if (!catManifest || !catManifest.total) return;
+  document.querySelectorAll("[data-hero-total]").forEach((el) => {
+    el.textContent = fmtMiles(catManifest.total);
+  });
+}
 function ensureCatManifest() {
   if (catManifest || catManifestBusy) return;
   catManifestBusy = true;
   catFetch("/manifest").then((m) => {
     catManifest = m; catManifestBusy = false;
+    pintarTotalHeroe();
     if (view.name === "categories") render();
   }).catch(() => { catManifestBusy = false; });
 }
@@ -517,11 +530,13 @@ const LOCK_SVG = `<span class="lock-badge"><svg aria-hidden="true" viewBox="0 0 
 /* ------------------------------------------------------------ vistas */
 
 function escaparateHtml() {
+  ensureCatManifest();
+  const totalHeroe = catManifest && catManifest.total ? fmtMiles(catManifest.total) : "71.621";
   return `<section aria-label="Escaparate de la biblioteca" class="escaparate">
     <img src="${HERO_IMG}" alt="" aria-hidden="true" class="bg" loading="eager" decoding="async">
     <div class="veil" aria-hidden="true"></div>
     <div class="front">
-      <p class="eyebrow">Biblioteca en línea · Obras maestras de la historia</p>
+      <p class="eyebrow">Biblioteca multilingüe. Contamos con <span data-hero-total>${totalHeroe}</span> libros</p>
       <p class="brand metallic-text">MAGISTER</p>
       <p class="lede">Lo mejor de todos los tiempos. Con tu cuenta lees una muestra gratuita de cada libro; con la suscripción, la biblioteca completa.</p>
       <div class="search-slot">${searchBoxHtml({ dark: true })}</div>
