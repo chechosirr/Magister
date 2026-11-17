@@ -717,7 +717,7 @@ function categoriesHtml() {
         ? (enFiltro && d.busy ? `<p class="small dim mt-4">Buscando…</p>` : enFiltro ? `<p class="small dim mt-4">Sin resultados para ese filtro.</p>` : `<p class="small dim mt-4">Cargando la lista completa…</p>`)
         : `<h3 class="font-display" style="margin:22px 0 0;font-size:16px;font-weight:700">${enFiltro ? "Resultados del filtro" : "Todos los libros"}</h3>
            <div class="grid-books mt-3">${lista.map((book) => bookCardHtml(book)).join("")}</div>
-           ${hayMas ? `<div class="center" style="margin-top:20px"><button type="button" class="btn-primary pad" data-action="cat-more" ${d.busy ? "disabled" : ""}>${d.busy ? "Cargando…" : "Cargar más"}</button></div>` : ""}`}
+           ${hayMas ? `<div class="center" style="margin-top:20px;width:100%;display:flex;justify-content:center"><button type="button" class="btn-primary pad" data-action="cat-more" ${d.busy ? "disabled" : ""}>${d.busy ? "Cargando…" : "Cargar más"}</button></div>` : ""}`}
   </div>`;
 }
 
