@@ -1299,6 +1299,10 @@ function goBack() {
 }
 
 function goBackNow() {
+  /* r99 (pedido de Sergio): desde los resultados de búsqueda, la
+     flecha vuelve DIRECTO al inicio, sin recorrer las búsquedas
+     anteriores una a una, se hayan hecho las que se hayan hecho. */
+  if (view.name === "search") { viewHistory = []; view = { name: "home" }; render(); window.scrollTo(0, 0); return; }
   const prev = viewHistory.pop();
   if (prev) { view = prev; render(); window.scrollTo(0, 0); }
   else { viewHistory = []; view = { name: "home" }; render(); window.scrollTo(0, 0); }
@@ -1372,6 +1376,11 @@ function goNow(next, opts) {
     view = next;
   } else if (next.name === "home" || next.name === "admin-home") {
     viewHistory = [];
+    view = next;
+  } else if (next.name === "search" && view.name === "search") {
+    /* r99: buscar de nuevo desde los resultados SUSTITUYE la
+       búsqueda actual en vez de apilarla en el historial; así la
+       flecha nunca recorre búsquedas anteriores. */
     view = next;
   } else {
     viewHistory.push(view);
