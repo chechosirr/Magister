@@ -9566,7 +9566,7 @@ function epubWsRenderMeaning() {
   const nMain = epubWsDefs.filter((d) => !d.variante).length;
   const nVar = epubWsDefs.filter((d) => d.variante).length;
   const recortada = nMain > 3 || nVar > 2;
-  box.innerHTML = epubFormasPrincipalesHtml(epubWsDefs)
+  box.innerHTML = epubCitaHtml(epubWsDefs)
     + epubFormaHeadHtml(epubWsDefs)
     + (epubWsDefExpanded ? epubDefsHtmlFull(epubWsDefs) : epubDefsHtml(epubWsDefs))
     + (recortada ? `<p class="epub-dict-hint epub-ws-more">${epubWsDefExpanded ? T("Toca para recoger la definición") : T("Toca para ver la definición completa")}</p>` : "");
@@ -10222,6 +10222,9 @@ async function epubDictLocal(term) {
        diccionario latín-español): la hoja las pinta arriba del
        cuadro de Significado. */
     if (j.formas_principales) out.formasPrincipales = j.formas_principales;
+    /* Cita clásica del lema (r101): la traen los dos
+       diccionarios latinos — el titular de la hoja. */
+    if (j.cita && Array.isArray(j.cita.partes) && j.cita.partes.length) out.cita = j.cita;
     const v = j.variante;
     if (v && Array.isArray(v.definiciones)) {
       for (const d of v.definiciones) {
@@ -10297,6 +10300,22 @@ function epubFormasPrincipalesHtml(defs) {
     : [fp.nominativo, fp.genitivo];
   const txt = partes.filter(Boolean).join(" · ");
   return txt ? `<p class="epub-dict-formas">${esc(txt)}</p>` : "";
+}
+
+/* Titular de la hoja (r101, orden de Sergio): la cita clásica
+   del lema que trae el servicio en los dos diccionarios
+   latinos — el verbo (o cualquiera de sus conjugaciones) con
+   su «infinitivo · perfecto · participio»; cualquier otra
+   palabra con su «nominativo · genitivo»; la invariable, con
+   su forma sola. Sin cita (los demás diccionarios), manda la
+   ficha de formas de siempre; sin ninguna de las dos, la hoja
+   queda como antes, sin huecos. */
+function epubCitaHtml(defs) {
+  const c = defs && defs.cita;
+  if (c && Array.isArray(c.partes) && c.partes.length) {
+    return `<p class="epub-dict-formas">${c.partes.map((p) => esc(p)).join(" · ")}</p>`;
+  }
+  return epubFormasPrincipalesHtml(defs);
 }
 
 async function epubDictLookup(word, seq) {
